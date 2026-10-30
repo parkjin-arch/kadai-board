@@ -397,6 +397,7 @@ dialog.sheet::backdrop { background: rgb(0 0 0 / .4); }
 .cal-filters .chip[aria-pressed="false"] { opacity: .45; }
 .cal-filters .chip[aria-pressed="false"]::before { background: transparent; border: 1px solid var(--c); }
 .cal-filters .chip[aria-pressed="true"] { background: var(--surface); color: var(--text); border-color: var(--line); }
+.cal-filters .add-shift { margin-left: auto; min-height: 30px; border-radius: 999px; color: var(--shift); border-color: var(--shift); font-weight: 700; }
 
 /* ===== 月表示（iPhone のカレンダー風・上下に続く） ===== */
 .mw-head {

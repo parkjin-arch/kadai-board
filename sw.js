@@ -1,6 +1,6 @@
 // Service Worker：オフラインでも開けるようにアプリ本体をキャッシュする
 // ファイルを更新してデプロイしたら CACHE の番号を上げる（古いキャッシュが消える）
-const CACHE = 'kadai-board-v3';
+const CACHE = 'kadai-board-v4';
 const ASSETS = [
   './',
   './index.html',

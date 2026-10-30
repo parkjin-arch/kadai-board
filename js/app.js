@@ -517,7 +517,7 @@ function renderShiftSummary(ws) {
     sm.unpaidHours && sm.income ? `（時給未設定 ${fmtHours(sm.unpaidHours)}）` : null);
   $('#wk-summary').replaceChildren(...(shiftStore.all().length
     ? [h('span', {}, '💼 バイト'), sumText('この週', weekSum), sumText(`${mid.getMonth() + 1}月`, monthSum)]
-    : [h('span', {}, '「＋」→「バイト」でシフトを登録すると、勤務時間と収入の目安がここに出ます')]));
+    : [h('span', {}, '「＋ バイト」でシフトを登録すると、勤務時間と収入の目安がここに出ます')]));
 
   const conflicts = findConflicts({ tt, shifts: shiftStore.all(), tasks: store.all(), rangeStart: ws, rangeEnd: we });
   const box = $('#wk-conflicts');
@@ -1389,6 +1389,7 @@ function bindEvents() {
     renderCalendar(new Date());
   });
   $('#cal-add').addEventListener('click', () => $('#add-dialog').showModal());
+  $('#cal-add-shift').addEventListener('click', () => addOnDate('shift', calBaseDate()));
   $('#add-dialog').addEventListener('click', (e) => {
     const b = e.target.closest('[data-add]');
     if (!b) return;
