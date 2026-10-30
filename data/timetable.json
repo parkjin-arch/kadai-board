@@ -1,0 +1,119 @@
+{
+  "term": "2026年度 秋クォーター",
+  "periods": [
+    { "period": 1, "start": "08:50", "end": "10:30" },
+    { "period": 2, "start": "10:40", "end": "12:20" },
+    { "period": 3, "start": "13:10", "end": "14:50" },
+    { "period": 4, "start": "15:05", "end": "16:45" },
+    { "period": 5, "start": "17:00", "end": "18:40" }
+  ],
+  "days": ["月", "火", "水", "木", "金"],
+  "courses": [
+    {
+      "id": "denki-kiki",
+      "name": "電気機器",
+      "short": "電気機器",
+      "room": "56-104",
+      "color": "#e8833a",
+      "slots": [{ "day": 1, "period": 2 }],
+      "aliases": []
+    },
+    {
+      "id": "jikken-a",
+      "name": "電気・情報生命工学実験A",
+      "short": "実験A",
+      "room": "63号館実験室",
+      "color": "#d64545",
+      "slots": [{ "day": 1, "period": 3 }, { "day": 1, "period": 4 }],
+      "aliases": ["実験A", "電気・情報生命工学実験", "実験"]
+    },
+    {
+      "id": "dsa",
+      "name": "データ構造とアルゴリズム",
+      "short": "データ構造とアルゴ",
+      "room": "52-201",
+      "color": "#3a7be8",
+      "slots": [{ "day": 1, "period": 5 }],
+      "aliases": ["データ構造", "アルゴリズム", "データ構造とアルゴ", "DSA"]
+    },
+    {
+      "id": "seimei-shinka",
+      "name": "生命の情報と進化",
+      "short": "生命の情報と進化",
+      "room": "52-302",
+      "color": "#2fa36b",
+      "slots": [{ "day": 2, "period": 3 }],
+      "aliases": ["生命の情報", "情報と進化"]
+    },
+    {
+      "id": "dataviz",
+      "name": "データビジュアリゼーション",
+      "short": "データビジュ",
+      "room": "52-103",
+      "color": "#9b59d0",
+      "slots": [{ "day": 3, "period": 2 }],
+      "aliases": ["データビジュアライゼーション", "データビジュ", "データ可視化"]
+    },
+    {
+      "id": "academic-reading-2",
+      "name": "Academic Reading 2",
+      "short": "Academic Reading 2",
+      "room": "55S-03-09",
+      "color": "#1e9fb0",
+      "slots": [{ "day": 3, "period": 5 }],
+      "aliases": ["Academic Reading", "AR2", "アカリー"]
+    },
+    {
+      "id": "kairo-b",
+      "name": "回路理論B 1クラス",
+      "short": "回路理論B",
+      "room": "52-301",
+      "color": "#c9a227",
+      "slots": [{ "day": 4, "period": 2 }, { "day": 5, "period": 5 }],
+      "aliases": ["回路理論B", "回路理論", "回路"]
+    },
+    {
+      "id": "comp-arch",
+      "name": "計算機アーキテクチャ",
+      "short": "計算機アーキ",
+      "room": "56-101",
+      "color": "#5566d6",
+      "slots": [{ "day": 5, "period": 2 }],
+      "aliases": ["アーキテクチャ", "計算機"]
+    },
+    {
+      "id": "system-kaiseki",
+      "name": "システム解析",
+      "short": "システム解析",
+      "room": "52-304",
+      "color": "#d6559a",
+      "slots": [{ "day": 5, "period": 3 }],
+      "aliases": ["シス解"]
+    },
+    {
+      "id": "cbd",
+      "name": "Concept Building And Discussion",
+      "short": "Concept Building",
+      "room": "55S-03-07",
+      "color": "#4aa3a0",
+      "slots": [{ "day": 5, "period": 4 }],
+      "aliases": ["Concept Building", "CBD"]
+    },
+    {
+      "id": "shinri-2",
+      "name": "心理学II",
+      "room": "オンデマンド",
+      "color": "#8a8f98",
+      "slots": [],
+      "aliases": ["心理学2", "心理学"]
+    },
+    {
+      "id": "hassei-seibutsu",
+      "name": "発生生物学",
+      "room": "オンデマンド",
+      "color": "#7a9a4a",
+      "slots": [],
+      "aliases": []
+    }
+  ]
+}

@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>課題ボード</title>
+  <meta name="description" content="授業・課題・個人タスクをまとめて管理">
+  <meta name="theme-color" content="#f6f5f2" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#16171a" media="(prefers-color-scheme: dark)">
+
+  <!-- PWA / iPhone ホーム画面用 -->
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <link rel="icon" href="icons/icon-192.png" type="image/png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="課題ボード">
+
+  <link rel="stylesheet" href="css/style.css">
+  <script type="module" src="js/app.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <h1>課題ボード</h1>
+    <span id="today-label" class="muted"></span>
+  </header>
+
+  <main id="main">
+    <!-- ===== タスク一覧 ===== -->
+    <section id="view-tasks" class="view" data-view="tasks">
+      <form id="quick-form" class="quick" autocomplete="off">
+        <input id="quick-input" type="text" enterkeyhint="done"
+               placeholder="例: 回路理論B レポート 11/6 23:59 !高" aria-label="タスクを1行で追加">
+        <button type="submit" class="btn primary" aria-label="追加">追加</button>
+        <button type="button" id="quick-detail" class="btn icon" aria-label="詳細を入力" title="詳細を入力">…</button>
+      </form>
+      <div id="quick-preview" class="preview" aria-live="polite"></div>
+
+      <nav class="filters" id="filters" aria-label="絞り込み">
+        <button data-filter="open" class="chip">未完了</button>
+        <button data-filter="today" class="chip">今日</button>
+        <button data-filter="week" class="chip">今週</button>
+        <button data-filter="overdue" class="chip">期限切れ</button>
+        <button data-filter="course" class="chip">授業別</button>
+        <button data-filter="done" class="chip">完了済み</button>
+      </nav>
+      <div id="course-filter" class="filters sub" hidden></div>
+
+      <div id="task-list" class="task-list"></div>
+    </section>
+
+    <!-- ===== 時間割 ===== -->
+    <section id="view-timetable" class="view" data-view="timetable">
+      <div class="section-head">
+        <h2>時間割</h2>
+        <span id="term-label" class="muted"></span>
+      </div>
+      <div id="timetable" class="timetable"></div>
+      <h3 class="small-head">オンデマンド</h3>
+      <div id="ondemand" class="ondemand"></div>
+    </section>
+
+    <!-- ===== 設定 ===== -->
+    <section id="view-settings" class="view" data-view="settings">
+      <h2>設定</h2>
+
+      <div class="card">
+        <h3>カレンダー</h3>
+        <p class="muted">期限のあるタスクを .ics ファイルに書き出します。Googleカレンダーの「設定 → インポート」や iPhone のカレンダーで読み込めます。</p>
+        <label class="row"><input type="checkbox" id="ics-include-done"> 完了済みも含める</label>
+        <button class="btn" id="export-ics">.ics をエクスポート</button>
+      </div>
+
+      <div class="card" id="sync-card" hidden>
+        <h3>同期（段階2）</h3>
+        <div id="sync-firebase" hidden>
+          <p class="muted" id="fb-status"></p>
+          <button class="btn" id="fb-login">Googleでログイン</button>
+          <button class="btn" id="fb-logout" hidden>ログアウト</button>
+        </div>
+        <div id="sync-gcal" hidden>
+          <p class="muted" id="gcal-status">Googleカレンダー：未接続</p>
+          <button class="btn" id="gcal-connect">Googleカレンダーに接続</button>
+          <button class="btn" id="gcal-resync" hidden>全タスクを再同期</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>表示</h3>
+        <div class="seg" id="theme-seg" role="radiogroup" aria-label="テーマ">
+          <label><input type="radio" name="theme" value="auto"><span>自動</span></label>
+          <label><input type="radio" name="theme" value="light"><span>ライト</span></label>
+          <label><input type="radio" name="theme" value="dark"><span>ダーク</span></label>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>データ</h3>
+        <p class="muted">データはこの端末のブラウザ内（localStorage）に保存されています。機種変更やブラウザのデータ削除に備えて、ときどきバックアップしてください。</p>
+        <div class="btn-row">
+          <button class="btn" id="backup-export">バックアップを書き出す</button>
+          <label class="btn">バックアップを読み込む<input type="file" id="backup-import" accept="application/json,.json" hidden></label>
+        </div>
+        <button class="btn danger-text" id="clear-done">完了済みタスクをすべて削除</button>
+      </div>
+
+      <p class="muted center" id="about"></p>
+    </section>
+  </main>
+
+  <!-- 下部タブ（スマホ） / 上部タブ（PC） -->
+  <nav class="tabbar" id="tabbar" aria-label="画面切り替え">
+    <button data-view="tasks"><span class="ti">☑</span><span>タスク</span></button>
+    <button data-view="timetable"><span class="ti">▦</span><span>時間割</span></button>
+    <button data-view="settings"><span class="ti">⚙</span><span>設定</span></button>
+  </nav>
+
+  <!-- タスク編集ダイアログ -->
+  <dialog id="task-dialog" class="sheet">
+    <form id="task-form" method="dialog">
+      <div class="sheet-head">
+        <h2 id="task-dialog-title">タスク</h2>
+        <button type="button" class="btn icon" data-close aria-label="閉じる">✕</button>
+      </div>
+
+      <label class="field">タイトル
+        <input name="title" required>
+      </label>
+
+      <div class="field">期限
+        <div class="row">
+          <input type="date" name="dueDate">
+          <input type="time" name="dueTime">
+        </div>
+        <div class="quick-dates">
+          <button type="button" class="chip sm" data-due="today">今日</button>
+          <button type="button" class="chip sm" data-due="tomorrow">明日</button>
+          <button type="button" class="chip sm" data-due="week">1週間後</button>
+          <button type="button" class="chip sm" data-due="next">次回の授業</button>
+          <button type="button" class="chip sm" data-due="clear">期限なし</button>
+        </div>
+      </div>
+
+      <label class="field">授業
+        <select name="courseId"></select>
+      </label>
+
+      <div class="field">優先度
+        <div class="seg" role="radiogroup">
+          <label><input type="radio" name="priority" value="high"><span>高</span></label>
+          <label><input type="radio" name="priority" value="mid"><span>中</span></label>
+          <label><input type="radio" name="priority" value="low"><span>低</span></label>
+        </div>
+      </div>
+
+      <label class="field">所要時間の見積もり（分・任意）
+        <input type="number" name="estimateMin" min="0" step="5" inputmode="numeric" list="estimate-presets">
+        <datalist id="estimate-presets">
+          <option value="30"><option value="60"><option value="90"><option value="120"><option value="180">
+        </datalist>
+      </label>
+
+      <label class="field">メモ
+        <textarea name="memo" rows="3"></textarea>
+      </label>
+
+      <div class="sheet-actions">
+        <button type="button" class="btn danger-text" id="task-delete">削除</button>
+        <button type="button" class="btn" id="task-gcal">📅 Googleカレンダーに追加</button>
+        <button type="submit" class="btn primary">保存</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- 授業ごとのタスク一覧 -->
+  <dialog id="course-dialog" class="sheet">
+    <div class="sheet-head">
+      <div>
+        <h2 id="course-name"></h2>
+        <p class="muted" id="course-meta"></p>
+      </div>
+      <button type="button" class="btn icon" data-close aria-label="閉じる">✕</button>
+    </div>
+    <div id="course-tasks" class="task-list"></div>
+    <div class="sheet-actions">
+      <button type="button" class="btn primary" id="course-add">＋ この授業のタスクを追加</button>
+    </div>
+  </dialog>
+
+  <div id="toast" class="toast" role="status" hidden></div>
+</body>
+</html>
