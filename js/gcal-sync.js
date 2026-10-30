@@ -30,7 +30,7 @@ function loadScript(src) {
 
 export class GcalSync {
   /**
-   * @param {import('./store.js').LocalTaskStore} store
+   * @param {import('./store.js').LocalCollection} store タスクのコレクション
    * @param {import('./timetable.js').Timetable} tt
    * @param {{ clientId: string, calendarName: string, scope: string }} opts
    */

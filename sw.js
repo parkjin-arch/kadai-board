@@ -1,6 +1,6 @@
 // Service Worker：オフラインでも開けるようにアプリ本体をキャッシュする
 // ファイルを更新してデプロイしたら CACHE の番号を上げる（古いキャッシュが消える）
-const CACHE = 'kadai-board-v1';
+const CACHE = 'kadai-board-v3';
 const ASSETS = [
   './',
   './index.html',
@@ -13,6 +13,13 @@ const ASSETS = [
   './js/calendar.js',
   './js/timetable.js',
   './js/dateutil.js',
+  './js/shifts.js',
+  './js/notes.js',
+  './js/events.js',
+  './js/agenda.js',
+  './js/holidays.js',
+  './js/calendar-view.js',
+  './js/dom.js',
   './data/timetable.json',
   './icons/icon-192.png',
   './icons/apple-touch-icon.png',

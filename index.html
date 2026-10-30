@@ -6,7 +6,7 @@
   <title>課題ボード</title>
   <meta name="description" content="授業・課題・個人タスクをまとめて管理">
   <meta name="theme-color" content="#f6f5f2" media="(prefers-color-scheme: light)">
-  <meta name="theme-color" content="#16171a" media="(prefers-color-scheme: dark)">
+  <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
 
   <!-- PWA / iPhone ホーム画面用 -->
   <link rel="manifest" href="manifest.webmanifest">
@@ -50,15 +50,54 @@
       <div id="task-list" class="task-list"></div>
     </section>
 
-    <!-- ===== 時間割 ===== -->
+    <!-- ===== 時間割（授業の追加・編集） ===== -->
     <section id="view-timetable" class="view" data-view="timetable">
       <div class="section-head">
         <h2>時間割</h2>
         <span id="term-label" class="muted"></span>
       </div>
       <div id="timetable" class="timetable"></div>
-      <h3 class="small-head">オンデマンド</h3>
+      <h3 class="small-head">OD（オンデマンド）</h3>
       <div id="ondemand" class="ondemand"></div>
+      <p class="muted hint">空きコマをタップすると、その曜日・時限で授業を追加できます</p>
+    </section>
+
+    <!-- ===== カレンダー（日・週・月・年） ===== -->
+    <section id="view-calendar" class="view" data-view="calendar">
+      <div class="cal-head">
+        <div class="cal-title-row">
+          <h2 id="cal-title"></h2>
+          <button class="btn icon sm ghost" id="cal-prev" aria-label="前へ">‹</button>
+          <button class="btn icon sm ghost" id="cal-next" aria-label="次へ">›</button>
+          <span class="spacer"></span>
+          <button class="chip sm" id="cal-today">今日</button>
+          <button class="btn icon sm primary" id="cal-add" aria-label="追加">＋</button>
+        </div>
+        <div class="seg cal-seg" id="cal-seg" role="radiogroup" aria-label="表示">
+          <label><input type="radio" name="calmode" value="day"><span>日</span></label>
+          <label><input type="radio" name="calmode" value="week"><span>週</span></label>
+          <label><input type="radio" name="calmode" value="month"><span>月</span></label>
+          <label><input type="radio" name="calmode" value="year"><span>年</span></label>
+        </div>
+        <div class="cal-filters" id="cal-filters" aria-label="表示する種類">
+          <button class="chip sm pill" data-kind="class" style="--c:#5b8def">授業</button>
+          <button class="chip sm pill" data-kind="shift" style="--c:var(--shift)">バイト</button>
+          <button class="chip sm pill" data-kind="task" style="--c:var(--urgent)">タスク</button>
+          <button class="chip sm pill" data-kind="event" style="--c:#af52de">予定</button>
+        </div>
+      </div>
+
+      <div id="cal-week-extra" hidden>
+        <div id="wk-summary" class="wk-summary"></div>
+        <div id="wk-conflicts" class="conflicts" hidden></div>
+      </div>
+
+      <div id="cal-month-wrap" hidden>
+        <div class="mw-head"><span class="sun">日</span><span>月</span><span>火</span><span>水</span><span>木</span><span>金</span><span class="sat">土</span></div>
+        <div id="cal-month" class="cal-month"></div>
+      </div>
+      <div id="cal-grid" class="tg" hidden></div>
+      <div id="cal-year" class="cal-year" hidden></div>
     </section>
 
     <!-- ===== 設定 ===== -->
@@ -67,9 +106,20 @@
 
       <div class="card">
         <h3>カレンダー</h3>
-        <p class="muted">期限のあるタスクを .ics ファイルに書き出します。Googleカレンダーの「設定 → インポート」や iPhone のカレンダーで読み込めます。</p>
-        <label class="row"><input type="checkbox" id="ics-include-done"> 完了済みも含める</label>
+        <p class="muted">期限のあるタスク・バイトのシフト・自分の予定を .ics ファイルに書き出します。Googleカレンダーの「設定 → インポート」や iPhone のカレンダーで読み込めます。</p>
+        <label class="row"><input type="checkbox" id="ics-include-done"> 完了済みのタスクも含める</label>
+        <label class="row"><input type="checkbox" id="ics-include-shifts" checked> バイトのシフトも含める</label>
+        <label class="row"><input type="checkbox" id="ics-include-events" checked> 自分の予定も含める</label>
         <button class="btn" id="export-ics">.ics をエクスポート</button>
+      </div>
+
+      <div class="card">
+        <h3>学期・時間割</h3>
+        <label class="field">今の学期
+          <input id="term-name" placeholder="例: 2026年度 秋クォーター">
+        </label>
+        <p class="muted" id="term-info"></p>
+        <button class="btn" id="term-switch">学期を切り替える（授業だけリセット）</button>
       </div>
 
       <div class="card" id="sync-card" hidden>
@@ -107,12 +157,29 @@
 
       <p class="muted center" id="about"></p>
     </section>
+
+    <!-- ===== 今週のノート（タスク・週間画面の一番下） ===== -->
+    <section id="view-notes" class="notes card">
+      <div class="notes-head">
+        <h3>今週の注意点</h3>
+        <button class="btn icon sm" id="note-prev" aria-label="前の週">‹</button>
+        <span id="note-range" class="wk-range"></span>
+        <button class="btn icon sm" id="note-next" aria-label="次の週">›</button>
+        <button class="chip sm" id="note-today" hidden>今週へ</button>
+        <span id="note-status" class="muted"></span>
+      </div>
+      <div id="note-carry" class="carry" hidden></div>
+      <div id="note-view" class="note-view" tabindex="0" aria-label="ノート（タップで編集）"></div>
+      <textarea id="note-input" rows="5" hidden
+        placeholder="- 実験レポートは印刷して提出&#10;- 金曜はバイトのあと課題&#10;改行や「- 」で始まる箇条書きがそのまま表示されます"></textarea>
+    </section>
   </main>
 
   <!-- 下部タブ（スマホ） / 上部タブ（PC） -->
   <nav class="tabbar" id="tabbar" aria-label="画面切り替え">
     <button data-view="tasks"><span class="ti">☑</span><span>タスク</span></button>
     <button data-view="timetable"><span class="ti">▦</span><span>時間割</span></button>
+    <button data-view="calendar"><span class="ti">📅</span><span>カレンダー</span></button>
     <button data-view="settings"><span class="ti">⚙</span><span>設定</span></button>
   </nav>
 
@@ -173,7 +240,7 @@
     </form>
   </dialog>
 
-  <!-- 授業ごとのタスク一覧 -->
+  <!-- 授業をタップしたとき：タスク一覧 / 編集 / 休講など / 削除 -->
   <dialog id="course-dialog" class="sheet">
     <div class="sheet-head">
       <div>
@@ -182,9 +249,307 @@
       </div>
       <button type="button" class="btn icon" data-close aria-label="閉じる">✕</button>
     </div>
-    <div id="course-tasks" class="task-list"></div>
-    <div class="sheet-actions">
-      <button type="button" class="btn primary" id="course-add">＋ この授業のタスクを追加</button>
+    <div id="course-info" class="course-info"></div>
+    <div class="action-row" id="course-actions">
+      <button type="button" class="btn sm" id="course-act-tasks" aria-pressed="true">📋 タスク一覧</button>
+      <button type="button" class="btn sm" id="course-act-edit">✏️ 編集</button>
+      <button type="button" class="btn sm" id="course-act-change">📅 休講・補講・教室変更</button>
+      <button type="button" class="btn sm danger-text" id="course-act-delete">🗑 削除</button>
+    </div>
+    <div id="course-task-pane">
+      <div id="course-tasks" class="task-list"></div>
+      <div class="sheet-actions">
+        <button type="button" class="btn primary" id="course-add">＋ この授業のタスクを追加</button>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- 授業の追加・編集 -->
+  <dialog id="course-edit-dialog" class="sheet">
+    <form id="course-form" method="dialog" class="sheet-form">
+      <div class="sheet-head">
+        <h2 id="course-edit-title">授業を追加</h2>
+        <button type="button" class="btn icon" data-close aria-label="閉じる">✕</button>
+      </div>
+      <label class="field">授業名
+        <input name="name" required placeholder="例: 回路理論B">
+      </label>
+      <label class="field">時間割に表示する短い名前（任意）
+        <input name="short" placeholder="例: 回路B">
+      </label>
+
+      <div class="field">曜日・時限
+        <label class="row check-row"><input type="checkbox" name="onDemand"> オンデマンド（曜日・時限なし）</label>
+        <div id="slot-rows" class="slot-rows"></div>
+        <button type="button" class="btn sm" id="slot-add">＋ コマを追加（週に複数回ある授業）</button>
+      </div>
+      <p id="course-clash" class="conflicts" hidden></p>
+
+      <div class="row two">
+        <label class="field">教室
+          <input name="room" placeholder="例: 52-301">
+        </label>
+        <label class="field">担当教員（任意）
+          <input name="teacher">
+        </label>
+      </div>
+      <div class="field">色
+        <div class="swatches" id="course-colors"></div>
+      </div>
+      <label class="field">シラバスURL（任意）
+        <input name="syllabus" type="url" inputmode="url" placeholder="https://">
+      </label>
+      <label class="field">別名（1行入力で使う。カンマ区切り・任意）
+        <input name="aliases" placeholder="例: 回路, 回路理論">
+      </label>
+      <label class="field">メモ
+        <textarea name="memo" rows="2"></textarea>
+      </label>
+      <div class="sheet-actions">
+        <button type="submit" class="btn primary" id="course-save">保存</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- 授業の削除確認 -->
+  <dialog id="course-delete-dialog" class="sheet small">
+    <div class="sheet-form">
+      <h2>授業を削除</h2>
+      <p id="course-delete-text"></p>
+      <div class="stack-actions">
+        <button type="button" class="btn danger-text" id="cdel-with-tasks">タスクも一緒に削除</button>
+        <button type="button" class="btn" id="cdel-keep-tasks">授業なしとして残す</button>
+        <button type="button" class="btn" data-close>キャンセル</button>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- 特定の日だけの変更（休講・補講・教室変更） -->
+  <dialog id="change-dialog" class="sheet">
+    <form id="change-form" method="dialog" class="sheet-form">
+      <div class="sheet-head">
+        <div>
+          <h2>休講・補講・教室変更</h2>
+          <p class="muted" id="change-course"></p>
+        </div>
+        <button type="button" class="btn icon" data-close aria-label="閉じる">✕</button>
+      </div>
+      <div id="change-list" class="change-list"></div>
+      <h3 class="small-head">追加する</h3>
+      <div class="seg" role="radiogroup" aria-label="種類">
+        <label><input type="radio" name="kind" value="cancel" checked><span>休講</span></label>
+        <label><input type="radio" name="kind" value="makeup"><span>補講</span></label>
+        <label><input type="radio" name="kind" value="room"><span>教室変更</span></label>
+      </div>
+      <label class="field">日付
+        <input type="date" name="date" required>
+      </label>
+      <div class="field" data-for="makeup">時限
+        <div class="row">
+          <select name="period"></select><span>〜</span><select name="endPeriod"></select>
+        </div>
+      </div>
+      <label class="field" data-for="room makeup">教室
+        <input name="room">
+      </label>
+      <label class="field">メモ（任意）
+        <input name="note" placeholder="例: 学会のため">
+      </label>
+      <div class="sheet-actions">
+        <button type="submit" class="btn primary">追加</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- 自分の予定の追加・編集 -->
+  <dialog id="event-dialog" class="sheet">
+    <form id="event-form" method="dialog" class="sheet-form">
+      <div class="sheet-head">
+        <h2 id="event-dialog-title">予定を追加</h2>
+        <button type="button" class="btn icon" data-close aria-label="閉じる">✕</button>
+      </div>
+      <label class="field">タイトル
+        <input name="title" required placeholder="例: 旅行">
+      </label>
+      <label class="row check-row"><input type="checkbox" name="allDay"> 終日</label>
+      <div class="field">開始
+        <div class="row">
+          <input type="date" name="startDate" required>
+          <input type="time" name="startTime" data-time>
+        </div>
+      </div>
+      <div class="field">終了
+        <div class="row">
+          <input type="date" name="endDate" required>
+          <input type="time" name="endTime" data-time>
+        </div>
+      </div>
+      <div class="field">色
+        <div class="swatches" id="event-colors"></div>
+      </div>
+      <label class="field">メモ
+        <textarea name="memo" rows="2"></textarea>
+      </label>
+      <div class="sheet-actions">
+        <button type="button" class="btn danger-text" id="event-delete">削除</button>
+        <button type="button" class="btn" id="event-gcal">📅 Googleカレンダーに追加</button>
+        <button type="submit" class="btn primary">保存</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- 日付をタップしたとき：その日の一覧 -->
+  <dialog id="day-dialog" class="sheet">
+    <div class="sheet-form">
+      <div class="sheet-head">
+        <div>
+          <h2 id="day-title"></h2>
+          <p class="muted" id="day-holiday"></p>
+        </div>
+        <button type="button" class="btn icon" data-close aria-label="閉じる">✕</button>
+      </div>
+      <div id="day-list" class="day-list"></div>
+      <div class="sheet-actions">
+        <button type="button" class="btn" id="day-open">日表示で見る</button>
+        <button type="button" class="btn" id="day-add-shift">＋ バイト</button>
+        <button type="button" class="btn" id="day-add-task">＋ タスク</button>
+        <button type="button" class="btn primary" id="day-add-event">＋ 予定</button>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- カレンダーの「＋」 -->
+  <dialog id="add-dialog" class="sheet small">
+    <div class="sheet-form">
+      <h2>追加</h2>
+      <div class="stack-actions">
+        <button type="button" class="btn primary" data-add="event">予定</button>
+        <button type="button" class="btn" data-add="task">タスク</button>
+        <button type="button" class="btn" data-add="shift">バイト</button>
+        <button type="button" class="btn" data-close>キャンセル</button>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- 学期の切り替え -->
+  <dialog id="term-dialog" class="sheet">
+    <form id="term-form" method="dialog" class="sheet-form">
+      <div class="sheet-head">
+        <h2>学期を切り替える</h2>
+        <button type="button" class="btn icon" data-close aria-label="閉じる">✕</button>
+      </div>
+      <p class="muted">授業（時間割）だけをリセットします。タスク・バイト・予定・ノートは消えません。</p>
+      <label class="field">新しい学期の名前
+        <input name="term" required placeholder="例: 2027年度 春クォーター">
+      </label>
+      <div class="field">新しい時間割
+        <label class="row check-row"><input type="radio" name="start" value="empty" checked> 空の時間割から始める</label>
+        <label class="row check-row"><input type="radio" name="start" value="seed"> data/timetable.json の内容を読み込む</label>
+      </div>
+      <label class="row check-row"><input type="checkbox" name="archive" checked> 今の授業をアーカイブとして残す（過去のタスクに授業名が残ります）</label>
+      <div class="sheet-actions">
+        <button type="submit" class="btn primary">切り替える</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- シフト（単発 / 毎週）の登録・編集 -->
+  <dialog id="shift-dialog" class="sheet">
+    <form id="shift-form" method="dialog" class="sheet-form">
+      <div class="sheet-head">
+        <h2 id="shift-dialog-title">バイトを追加</h2>
+        <button type="button" class="btn icon" data-close aria-label="閉じる">✕</button>
+      </div>
+
+      <div class="seg" role="radiogroup" aria-label="繰り返し">
+        <label><input type="radio" name="kind" value="once"><span>単発</span></label>
+        <label><input type="radio" name="kind" value="weekly"><span>毎週</span></label>
+      </div>
+
+      <label class="field" data-kind="once">日付
+        <input type="date" name="date">
+      </label>
+      <div class="field" data-kind="weekly">曜日
+        <div class="seg wd-seg" role="radiogroup">
+          <label><input type="radio" name="weekday" value="1"><span>月</span></label>
+          <label><input type="radio" name="weekday" value="2"><span>火</span></label>
+          <label><input type="radio" name="weekday" value="3"><span>水</span></label>
+          <label><input type="radio" name="weekday" value="4"><span>木</span></label>
+          <label><input type="radio" name="weekday" value="5"><span>金</span></label>
+          <label><input type="radio" name="weekday" value="6"><span>土</span></label>
+          <label><input type="radio" name="weekday" value="0"><span>日</span></label>
+        </div>
+      </div>
+      <div class="field" data-kind="weekly">期間（終了日は空欄なら無期限）
+        <div class="row">
+          <input type="date" name="from" aria-label="開始日">
+          <span>〜</span>
+          <input type="date" name="until" aria-label="終了日">
+        </div>
+      </div>
+
+      <div class="field">時間（終了が開始より前なら翌日まで）
+        <div class="row">
+          <input type="time" name="start" required aria-label="開始時刻">
+          <span>–</span>
+          <input type="time" name="end" required aria-label="終了時刻">
+        </div>
+      </div>
+
+      <label class="field">勤務先・種類
+        <input name="place" list="place-list" placeholder="例: 塾講師、家庭教師" required>
+        <datalist id="place-list"></datalist>
+      </label>
+
+      <label class="field">時給（円・任意）
+        <input type="number" name="wage" min="0" step="10" inputmode="numeric">
+      </label>
+
+      <label class="field">メモ
+        <textarea name="memo" rows="2"></textarea>
+      </label>
+
+      <p id="shift-conflict" class="conflicts" hidden></p>
+
+      <div class="sheet-actions">
+        <button type="button" class="btn danger-text" id="shift-delete">削除</button>
+        <button type="submit" class="btn primary">保存</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- 週間ビューでシフトをタップしたとき（1回分の操作） -->
+  <dialog id="occ-dialog" class="sheet">
+    <div class="sheet-form">
+      <div class="sheet-head">
+        <div>
+          <h2 id="occ-title"></h2>
+          <p class="muted" id="occ-meta"></p>
+        </div>
+        <button type="button" class="btn icon" data-close aria-label="閉じる">✕</button>
+      </div>
+      <p id="occ-memo" class="occ-memo"></p>
+      <p id="occ-conflict" class="conflicts" hidden></p>
+
+      <div id="occ-weekly" class="occ-weekly">
+        <h3 class="small-head">この日だけ変更</h3>
+        <div class="row">
+          <input type="time" id="occ-start" aria-label="この日の開始時刻">
+          <span>–</span>
+          <input type="time" id="occ-end" aria-label="この日の終了時刻">
+          <button type="button" class="btn" id="occ-apply">変更</button>
+        </div>
+        <div class="btn-row">
+          <button type="button" class="btn" id="occ-cancel">この日は休み</button>
+          <button type="button" class="btn" id="occ-reset">元に戻す</button>
+        </div>
+      </div>
+
+      <div class="sheet-actions">
+        <button type="button" class="btn" id="occ-gcal">📅 この日をGoogleカレンダーに追加</button>
+        <button type="button" class="btn" id="occ-gcal-series">📅 毎週の予定として追加</button>
+        <button type="button" class="btn primary" id="occ-edit">シフトを編集</button>
+      </div>
     </div>
   </dialog>
 

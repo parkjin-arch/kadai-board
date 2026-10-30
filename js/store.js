@@ -1,13 +1,15 @@
-// タスクの保存層
-// UI はこのインターフェースだけを使う。段階2では FirestoreTaskStore（firebase-store.js）に差し替える。
+// 保存層（タスク・シフト・ノートで共通の「コレクション」）
+// UI はこのインターフェースだけを使う。段階2では firebase-store.js の FirestoreCollection に差し替える。
 //
 //   init()              : 読み込み（Promise）
-//   all()               : 現在のタスク配列（同期・キャッシュから）
-//   add(task)           : 追加して保存したタスクを返す
-//   update(id, patch)   : 部分更新して更新後のタスクを返す
+//   all()               : 現在の配列（同期・キャッシュから）
+//   get(id)             : 1件取得（なければ null）
+//   add(doc)            : 追加して保存したものを返す
+//   update(id, patch)   : 部分更新して更新後のものを返す
+//   put(doc)            : なければ追加・あれば上書き（ノートの自動保存用）
 //   remove(id)          : 削除
-//   replaceAll(tasks)   : バックアップからの復元用
-//   subscribe(fn)       : 変更時に fn(tasks) を呼ぶ。解除関数を返す
+//   replaceAll(docs)    : バックアップからの復元用
+//   subscribe(fn)       : 変更時に fn(docs) を呼ぶ。解除関数を返す
 //   getMeta(key) / setMeta(key, value) : 設定値（カレンダーIDなど）
 
 /**
@@ -49,51 +51,70 @@ export function makeTask(fields) {
   };
 }
 
-export class LocalTaskStore {
-  constructor(key = 'kadai-board.tasks.v1') {
+export class LocalCollection {
+  constructor(key) {
     this.key = key;
     this.metaKey = key + '.meta';
-    this.tasks = [];
+    this.docs = [];
     this.listeners = new Set();
   }
 
   async init() {
-    try {
-      this.tasks = JSON.parse(localStorage.getItem(this.key) || '[]');
-    } catch {
-      this.tasks = [];
-    }
+    this._load();
     // 別タブで変更されたら追従する
     window.addEventListener('storage', (e) => {
-      if (e.key === this.key) this.init().then(() => this._emit());
+      if (e.key !== this.key) return;
+      this._load();
+      this._emit();
     });
   }
 
-  all() {
-    return this.tasks;
+  _load() {
+    try {
+      this.docs = JSON.parse(localStorage.getItem(this.key) || '[]');
+    } catch {
+      this.docs = [];
+    }
   }
 
-  async add(task) {
-    this.tasks.push(task);
+  all() {
+    return this.docs;
+  }
+
+  get(id) {
+    return this.docs.find((t) => t.id === id) || null;
+  }
+
+  async add(doc) {
+    this.docs.push(doc);
     this._save();
-    return task;
+    return doc;
   }
 
   async update(id, patch) {
-    const i = this.tasks.findIndex((t) => t.id === id);
+    const i = this.docs.findIndex((t) => t.id === id);
     if (i < 0) return null;
-    this.tasks[i] = { ...this.tasks[i], ...patch, updatedAt: new Date().toISOString() };
+    this.docs[i] = { ...this.docs[i], ...patch, updatedAt: new Date().toISOString() };
     this._save();
-    return this.tasks[i];
+    return this.docs[i];
+  }
+
+  async put(doc) {
+    const i = this.docs.findIndex((t) => t.id === doc.id);
+    const saved = { ...doc, updatedAt: new Date().toISOString() };
+    if (i < 0) this.docs.push(saved);
+    else this.docs[i] = saved;
+    this._save();
+    return saved;
   }
 
   async remove(id) {
-    this.tasks = this.tasks.filter((t) => t.id !== id);
+    this.docs = this.docs.filter((t) => t.id !== id);
     this._save();
   }
 
-  async replaceAll(tasks) {
-    this.tasks = tasks.map((t) => makeTask(t));
+  async replaceAll(docs) {
+    this.docs = docs;
     this._save();
   }
 
@@ -117,11 +138,11 @@ export class LocalTaskStore {
   }
 
   _save() {
-    localStorage.setItem(this.key, JSON.stringify(this.tasks));
+    localStorage.setItem(this.key, JSON.stringify(this.docs));
     this._emit();
   }
 
   _emit() {
-    for (const fn of this.listeners) fn(this.tasks);
+    for (const fn of this.listeners) fn(this.docs);
   }
 }

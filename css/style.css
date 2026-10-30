@@ -13,6 +13,13 @@
   --overdue: #b91c1c;
   --overdue-bg: #fdecec;
   --ok: #15803d;
+  --today: #ff3b30;           /* 今日（iPhone のカレンダーと同じ赤） */
+  --sun: #e5484d;             /* 日曜・祝日 */
+  --sat: #3b82f6;             /* 土曜 */
+  --shift: #0f766e;           /* バイト */
+  --shift-bg: #d5f0ec;
+  --warn: #b45309;
+  --warn-bg: #fff7e0;
   --shadow: 0 1px 2px rgb(0 0 0 / .06), 0 2px 8px rgb(0 0 0 / .04);
   --radius: 12px;
   --tabbar-h: 58px;
@@ -22,12 +29,12 @@
 /* 端末がダーク設定のとき（ただし手動でライトを選んだ場合は除く） */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --bg: #16171a;
-    --surface: #202125;
-    --surface-2: #2a2b30;
-    --text: #ececef;
-    --muted: #9a9aa3;
-    --line: #34353b;
+    --bg: #000000;
+    --surface: #1c1c1e;
+    --surface-2: #2c2c2e;
+    --text: #f2f2f7;
+    --muted: #98989f;
+    --line: #38383a;
     --accent: #e0566b;
     --accent-text: #16171a;
     --urgent: #fb923c;
@@ -35,17 +42,24 @@
     --overdue: #f87171;
     --overdue-bg: #3b1d1f;
     --ok: #4ade80;
+    --today: #ff453a;
+    --sun: #ff6b6b;
+    --sat: #64a8ff;
+    --shift: #2dd4bf;
+    --shift-bg: #123a37;
+    --warn: #fbbf24;
+    --warn-bg: #3a3014;
     --shadow: none;
     color-scheme: dark;
   }
 }
 :root[data-theme="dark"] {
-  --bg: #16171a;
-  --surface: #202125;
-  --surface-2: #2a2b30;
-  --text: #ececef;
-  --muted: #9a9aa3;
-  --line: #34353b;
+  --bg: #000000;
+  --surface: #1c1c1e;
+  --surface-2: #2c2c2e;
+  --text: #f2f2f7;
+  --muted: #98989f;
+  --line: #38383a;
   --accent: #e0566b;
   --accent-text: #16171a;
   --urgent: #fb923c;
@@ -53,6 +67,13 @@
   --overdue: #f87171;
   --overdue-bg: #3b1d1f;
   --ok: #4ade80;
+  --today: #ff453a;
+  --sun: #ff6b6b;
+  --sat: #64a8ff;
+  --shift: #2dd4bf;
+  --shift-bg: #123a37;
+  --warn: #fbbf24;
+  --warn-bg: #3a3014;
   --shadow: none;
   color-scheme: dark;
 }
@@ -105,6 +126,8 @@ textarea { resize: vertical; }
 .btn:active { transform: scale(.97); }
 .btn.primary { background: var(--accent); color: var(--accent-text); border-color: transparent; font-weight: 600; }
 .btn.icon { padding: 0; width: 40px; flex: none; }
+.btn.sm { min-height: 32px; padding: 4px 10px; font-size: 14px; }
+.btn.icon.sm { width: 32px; font-size: 18px; }
 .btn.danger-text { color: var(--overdue); }
 .btn-row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
 
@@ -135,6 +158,7 @@ main { padding: 8px 16px 24px; max-width: 1200px; margin: 0 auto; }
 .view { display: none; }
 body[data-view="tasks"] #view-tasks,
 body[data-view="timetable"] #view-timetable,
+body[data-view="calendar"] #view-calendar,
 body[data-view="settings"] #view-settings { display: block; }
 
 .section-head { display: flex; align-items: baseline; gap: 8px; margin: 4px 0 10px; }
@@ -181,7 +205,7 @@ body[data-view="settings"] #view-settings { display: block; }
   }
   body[data-view="tasks"] #view-timetable,
   body[data-view="timetable"] #view-tasks { display: block; }
-  #view-timetable { position: sticky; top: 16px; }
+  #view-notes { grid-column: 1 / -1; }
   #view-settings { max-width: 640px; }
 }
 
@@ -238,6 +262,7 @@ body[data-view="settings"] #view-settings { display: block; }
 .pill { display: inline-flex; align-items: center; gap: 4px; }
 .pill::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--c, var(--muted)); }
 .prio { font-weight: 700; }
+.warn-chip { color: var(--warn); font-weight: 700; }
 .prio.high { color: var(--overdue); }
 
 .t-cal {
@@ -245,20 +270,7 @@ body[data-view="settings"] #view-settings { display: block; }
 }
 .t-cal:active { background: var(--surface-2); }
 
-/* ===== 時間割 ===== */
-.timetable {
-  display: grid;
-  grid-template-columns: 34px repeat(5, minmax(0, 1fr));
-  grid-template-rows: auto;
-  grid-auto-rows: minmax(76px, auto);
-  gap: 3px;
-}
-.tt-head { font-size: 12px; text-align: center; color: var(--muted); align-self: end; padding-bottom: 2px; min-height: 0; }
-.tt-head.today { color: var(--accent); font-weight: 700; }
-.tt-period { font-size: 11px; color: var(--muted); text-align: center; display: flex; flex-direction: column; justify-content: center; line-height: 1.25; }
-.tt-period b { font-size: 14px; color: var(--text); }
-.tt-empty { background: var(--surface-2); border-radius: 8px; opacity: .5; }
-.tt-empty.today { opacity: .9; }
+/* ===== 授業カード（時間割・OD一覧） ===== */
 .tt-cell {
   position: relative;
   background: var(--surface);
@@ -274,8 +286,6 @@ body[data-view="settings"] #view-settings { display: block; }
 }
 .tt-cell .n { padding-right: 14px; font-weight: 600; word-break: break-all; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
 .tt-cell .r { color: var(--muted); font-size: 10.5px; margin-top: auto; }
-.tt-cell.today { background: color-mix(in srgb, var(--c) 10%, var(--surface)); }
-.tt-cell.now { outline: 2px solid var(--accent); outline-offset: 1px; }
 .badge {
   position: absolute; top: 3px; right: 3px;
   min-width: 18px; height: 18px; border-radius: 9px; padding: 0 5px;
@@ -312,8 +322,8 @@ dialog.sheet {
   overflow: auto;
 }
 dialog.sheet::backdrop { background: rgb(0 0 0 / .4); }
-#task-form, #course-dialog { padding: 16px 16px calc(16px + env(safe-area-inset-bottom)); }
-#task-form { display: flex; flex-direction: column; gap: 12px; }
+#task-form, #course-dialog, .sheet-form { padding: 16px 16px calc(16px + env(safe-area-inset-bottom)); }
+#task-form, .sheet-form { display: flex; flex-direction: column; gap: 12px; }
 .sheet-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
 .field { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--muted); }
 .field > input, .field > select, .field > textarea, .field .row, .field .seg { color: var(--text); }
@@ -337,3 +347,278 @@ dialog.sheet::backdrop { background: rgb(0 0 0 / .4); }
 }
 .toast button { background: none; border: 0; color: inherit; font-weight: 700; text-decoration: underline; cursor: pointer; padding: 0; }
 @media (min-width: 960px) { .toast { bottom: 24px; } }
+
+/* ===== 週表示の上（バイト集計・重なり） ===== */
+.wk-range { font-size: 14px; font-weight: 600; min-width: 92px; text-align: center; font-variant-numeric: tabular-nums; }
+.wk-summary { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 13px; color: var(--muted); margin: 0 2px 8px; }
+.wk-summary b { color: var(--text); font-variant-numeric: tabular-nums; }
+
+.conflicts {
+  background: var(--warn-bg); color: var(--warn);
+  border-radius: 10px; padding: 8px 12px; margin: 0 0 8px; font-size: 13px;
+  display: flex; flex-direction: column; gap: 2px;
+}
+.conflicts div::before { content: "⚠ "; }
+
+/* ===== 時間割グリッド ===== */
+.timetable {
+  display: grid;
+  grid-template-columns: 34px repeat(5, minmax(0, 1fr));
+  grid-template-rows: auto;
+  grid-auto-rows: minmax(72px, auto);
+  gap: 3px;
+}
+.tt-head { font-size: 12px; text-align: center; color: var(--muted); align-self: end; padding-bottom: 2px; }
+.tt-head.today { color: var(--today); font-weight: 700; }
+.tt-period { font-size: 11px; color: var(--muted); text-align: center; display: flex; flex-direction: column; justify-content: center; line-height: 1.25; }
+.tt-period b { font-size: 14px; color: var(--text); }
+.tt-empty {
+  background: var(--surface-2); border: 1px dashed transparent; border-radius: 8px; opacity: .55;
+  color: transparent; font-size: 20px; cursor: pointer;
+}
+.tt-empty:hover, .tt-empty:focus-visible { opacity: 1; color: var(--muted); border-color: var(--line); }
+.tt-empty.today { opacity: .85; }
+.tt-cell.today { background: color-mix(in srgb, var(--c) 10%, var(--surface)); }
+.tt-cell.now { outline: 2px solid var(--today); outline-offset: 1px; }
+.tt-cell.clash { outline: 2px dashed var(--warn); outline-offset: -2px; }
+.tt-cell.od-add { --c: var(--line); justify-content: center; align-items: center; color: var(--muted); font-weight: 600; }
+.hint { margin: 10px 2px 0; }
+
+/* ===== カレンダー：見出し ===== */
+.cal-head { display: flex; flex-direction: column; gap: 8px; margin-bottom: 8px; }
+.cal-title-row { display: flex; align-items: center; gap: 4px; }
+.cal-title-row h2 { font-size: 20px; margin-right: 4px; font-variant-numeric: tabular-nums; }
+.cal-title-row .spacer { flex: 1; }
+.btn.ghost { border-color: transparent; background: none; color: var(--today); font-size: 22px; }
+#cal-add { font-size: 20px; }
+.cal-seg { display: flex; }
+.cal-seg label { flex: 1; text-align: center; }
+.cal-filters { display: flex; gap: 6px; flex-wrap: wrap; }
+.cal-filters .chip[aria-pressed="false"] { opacity: .45; }
+.cal-filters .chip[aria-pressed="false"]::before { background: transparent; border: 1px solid var(--c); }
+.cal-filters .chip[aria-pressed="true"] { background: var(--surface); color: var(--text); border-color: var(--line); }
+
+/* ===== 月表示（iPhone のカレンダー風・上下に続く） ===== */
+.mw-head {
+  display: grid; grid-template-columns: repeat(7, 1fr);
+  font-size: 11px; color: var(--muted); text-align: center;
+  padding-bottom: 4px; border-bottom: 1px solid var(--line);
+}
+.mw-head .sun { color: var(--sun); }
+.mw-head .sat { color: var(--sat); }
+.cal-month {
+  position: relative; overflow-y: auto; overscroll-behavior: contain;
+  overflow-anchor: none; /* 前の月を足したときの位置合わせは JS で行う（ブラウザの自動補正と二重にならないように） */
+  height: calc(100dvh - 300px); min-height: 380px;
+  -webkit-overflow-scrolling: touch;
+}
+.mh { display: grid; grid-template-columns: repeat(7, 1fr); padding: 14px 0 4px; }
+.mh span { font-size: 18px; font-weight: 700; padding-left: 4px; }
+.mh span.cur { color: var(--today); }
+.mw {
+  display: grid; grid-template-columns: repeat(7, minmax(0, 1fr));
+  grid-template-rows: 24px repeat(3, 17px) 14px;
+  row-gap: 1px;
+  border-top: 1px solid var(--line);
+  padding-bottom: 3px;
+}
+.md {
+  grid-row: 1 / -1; border: 0; background: none; padding: 2px 0 0; cursor: pointer;
+  display: flex; flex-direction: column; align-items: center; min-width: 0;
+  color: var(--text); border-radius: 0;
+}
+.md:active, .md:hover { background: var(--surface-2); }
+.md .dn {
+  font-size: 14px; line-height: 20px; min-width: 22px; height: 20px; padding: 0 3px;
+  border-radius: 10px; font-variant-numeric: tabular-nums;
+}
+.md.sun .dn { color: var(--sun); }
+.md.sat .dn { color: var(--sat); }
+.md.today .dn { background: var(--today); color: #fff; font-weight: 700; }
+.mw .bar { grid-row: 2; margin-top: 0; }
+.bar {
+  position: relative; z-index: 1; pointer-events: none;
+  min-width: 0; margin: 0 2px; padding: 0 3px; border-radius: 4px;
+  font-size: 10.5px; line-height: 16px; height: 16px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  background: color-mix(in srgb, var(--c) 22%, transparent);
+  color: color-mix(in srgb, var(--c) 70%, var(--text));
+  font-weight: 600;
+}
+/* 複数日・終日：塗りつぶしのバー。週の折り返しでは端を角張らせて、続いているように見せる */
+.bar.span { background: var(--c); color: #fff; }
+.bar.cont-l { margin-left: 0; border-top-left-radius: 0; border-bottom-left-radius: 0; }
+.bar.cont-r { margin-right: 0; border-top-right-radius: 0; border-bottom-right-radius: 0; }
+.bar.k-holiday { background: none; color: var(--sun); padding-left: 2px; }
+.bar.k-task { background: none; color: var(--urgent); }
+.bar.k-task.overdue { color: var(--overdue); }
+.bar.cancelled { text-decoration: line-through; opacity: .5; }
+.bar.conflict { box-shadow: inset 0 0 0 1px var(--warn); }
+.mw .more { pointer-events: none; font-size: 10px; color: var(--muted); text-align: center; line-height: 14px; }
+
+/* ===== 週表示・日表示（縦軸が時刻） ===== */
+.tg {
+  display: grid; grid-template-columns: 30px repeat(var(--n), minmax(0, 1fr));
+  column-gap: 2px;
+}
+.tg-head {
+  border: 0; background: none; color: var(--muted); cursor: pointer;
+  display: flex; flex-direction: column; align-items: center; padding: 0 0 4px; font-size: 11px; line-height: 1.2; min-width: 0;
+}
+.tg-head b {
+  font-size: 16px; color: var(--text); min-width: 28px; height: 28px; line-height: 28px; border-radius: 14px; font-variant-numeric: tabular-nums;
+}
+.tg-head.sun b { color: var(--sun); }
+.tg-head.sat b { color: var(--sat); }
+.tg-head.today b { background: var(--today); color: #fff; }
+.tg-head .hol { font-size: 9.5px; color: var(--sun); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tg-allday-label { font-size: 9.5px; color: var(--muted); align-self: center; text-align: center; }
+.tg-allday {
+  display: grid; grid-auto-rows: 17px; row-gap: 1px; padding: 2px 0 4px;
+  grid-column: 2 / -1; border-bottom: 1px solid var(--line); margin-bottom: 4px;
+}
+.tg-allday .bar { pointer-events: auto; cursor: pointer; }
+.tg-allday .more { border: 0; background: none; font-size: 10px; color: var(--muted); cursor: pointer; }
+.tg-axis, .tg-col { position: relative; height: var(--tg-h); }
+.tg-col {
+  background-color: var(--surface);
+  background-image: linear-gradient(to bottom, var(--line) 1px, transparent 1px);
+  background-size: 100% var(--hour);
+  border-radius: 6px;
+}
+.tg-col.today { background-color: color-mix(in srgb, var(--today) 5%, var(--surface)); }
+.tg-hour { position: absolute; right: 3px; font-size: 10px; color: var(--muted); transform: translateY(-50%); }
+.tg-period {
+  position: absolute; left: 0; right: 0; border-left: 3px solid var(--line);
+  font-size: 10px; font-weight: 700; color: var(--muted); padding-left: 2px;
+}
+.tg-band { position: absolute; left: 0; right: 0; background: var(--surface-2); opacity: .5; pointer-events: none; }
+.tg-now { position: absolute; left: -2px; right: 0; height: 2px; background: var(--today); z-index: 3; pointer-events: none; }
+.tg-now::before { content: ""; position: absolute; left: -3px; top: -3px; width: 8px; height: 8px; border-radius: 50%; background: var(--today); }
+.tg-item {
+  position: absolute; z-index: 1;
+  border: 0; border-left: 3px solid var(--c); border-radius: 5px; padding: 2px 3px;
+  background: color-mix(in srgb, var(--c) 20%, var(--surface));
+  color: var(--text);
+  font-size: 10.5px; line-height: 1.2; text-align: left;
+  overflow: hidden; cursor: pointer;
+  display: flex; flex-direction: column;
+}
+.tg-item .n { font-weight: 700; word-break: break-all; }
+.tg-item .r { color: var(--muted); font-size: 9.5px; }
+.tg-item.k-shift {
+  background: repeating-linear-gradient(135deg, var(--shift-bg) 0 6px, color-mix(in srgb, var(--shift-bg) 70%, var(--surface)) 6px 12px);
+}
+.tg-item.k-shift .n { color: var(--shift); }
+.tg-item.cancelled { background: none; border: 1px dashed var(--muted); opacity: .6; }
+.tg-item.cancelled .n { text-decoration: line-through; color: var(--muted); }
+.tg-item.makeup .r, .tg-item.room .r { color: var(--warn); font-weight: 700; }
+.tg-item.conflict { outline: 2px solid var(--warn); outline-offset: -1px; }
+.tg-item .warn { color: var(--warn); }
+.tg-due {
+  position: absolute; left: 1px; right: 1px; z-index: 2; height: 16px; padding: 0 3px;
+  background: var(--surface); border: 1px solid var(--urgent); color: var(--urgent); border-radius: 4px;
+  font-size: 10.5px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: left; cursor: pointer;
+}
+.tg-due.overdue { border-color: var(--overdue); color: var(--overdue); }
+.tg-due.conflict { outline: 2px solid var(--warn); outline-offset: -1px; }
+@media (min-width: 960px) {
+  .tg-item { font-size: 11.5px; padding: 3px 4px; }
+}
+
+/* ===== 年表示 ===== */
+.cal-year { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px 10px; }
+@media (min-width: 700px) { .cal-year { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+.ym {
+  border: 0; background: none; color: var(--text); text-align: left; padding: 0; cursor: pointer; min-width: 0;
+  display: flex; flex-direction: column; justify-content: flex-start; align-self: start; /* ボタンの中身を上寄せ */
+}
+.ym-title { display: block; font-size: 16px; font-weight: 700; margin-bottom: 4px; }
+.ym-title.cur { color: var(--today); }
+.ym-days { display: grid; grid-template-columns: repeat(7, 1fr); row-gap: 2px; font-size: 9.5px; text-align: center; }
+.ym-wd { color: var(--muted); font-size: 8.5px; }
+.ym-d { position: relative; line-height: 15px; height: 17px; font-variant-numeric: tabular-nums; }
+.ym-d.sun { color: var(--sun); }
+.ym-d.sat { color: var(--sat); }
+.ym-d.today { background: var(--today); color: #fff; border-radius: 50%; font-weight: 700; width: 15px; margin: 0 auto; }
+.ym-d.dot::after {
+  content: ""; position: absolute; left: 50%; bottom: 0; width: 3px; height: 3px; margin-left: -1.5px;
+  border-radius: 50%; background: var(--muted);
+}
+.ym-d.today.dot::after { background: var(--today); bottom: -3px; }
+
+/* ===== その日の一覧 ===== */
+.day-list { display: flex; flex-direction: column; gap: 2px; }
+.day-item {
+  display: flex; align-items: stretch; gap: 10px; text-align: left;
+  border: 0; background: none; color: var(--text); padding: 8px 4px; border-radius: 8px; cursor: pointer;
+}
+.day-item:hover { background: var(--surface-2); }
+.di-time { width: 46px; flex: none; font-size: 12px; font-variant-numeric: tabular-nums; display: flex; flex-direction: column; text-align: right; }
+.di-time small { color: var(--muted); font-size: 11px; }
+.di-bar { width: 4px; flex: none; border-radius: 2px; background: var(--c); }
+.di-body { display: flex; flex-direction: column; min-width: 0; }
+.di-body b { word-break: break-word; }
+.day-item.cancelled b { text-decoration: line-through; opacity: .6; }
+
+/* ===== 授業ダイアログ・編集 ===== */
+.course-info { display: flex; flex-direction: column; gap: 4px; margin: 6px 0; font-size: 14px; }
+.course-info p { margin: 0; }
+.course-info .pre { white-space: pre-wrap; }
+.course-info a { color: var(--today); }
+.upcoming { margin: 0; padding-left: 18px; font-size: 13px; color: var(--warn); }
+.action-row { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
+.action-row .btn[aria-pressed="true"] { background: var(--surface-2); font-weight: 700; }
+.slot-rows { display: flex; flex-direction: column; gap: 6px; margin-bottom: 6px; }
+.slot-row { display: flex; gap: 6px; align-items: center; color: var(--text); }
+.slot-row select { flex: 1; padding: 8px; }
+.check-row { color: var(--text); font-size: 14px; }
+.check-row input { width: auto; }
+.row.two > .field { flex: 1; }
+.row.two { align-items: flex-start; }
+.swatches { display: flex; flex-wrap: wrap; gap: 8px; }
+.sw { position: relative; width: 30px; height: 30px; cursor: pointer; }
+.sw input[type=radio] { position: absolute; opacity: 0; }
+.sw span { display: block; width: 100%; height: 100%; border-radius: 50%; background: var(--c); }
+.sw input:checked + span { box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--c); }
+.sw input:focus-visible + span { outline: 2px solid var(--text); }
+.sw.custom input { width: 30px; height: 30px; padding: 0; border-radius: 50%; overflow: hidden; border: 1px dashed var(--muted); }
+.change-list { display: flex; flex-direction: column; gap: 4px; }
+.change-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 14px; color: var(--text); }
+.change-row.past { opacity: .5; }
+dialog.sheet.small { max-width: 400px; }
+.stack-actions { display: flex; flex-direction: column; gap: 8px; }
+.stack-actions .btn { width: 100%; }
+
+/* ===== シフトのダイアログ ===== */
+.wd-seg { flex-wrap: wrap; }
+.wd-seg span { padding: 6px 11px; }
+.occ-memo { margin: 0; white-space: pre-wrap; }
+.occ-memo:empty { display: none; }
+.occ-weekly { display: flex; flex-direction: column; gap: 8px; }
+.occ-weekly .small-head { margin: 4px 0 0; }
+
+/* ===== 今週のノート ===== */
+.notes { margin-top: 20px; align-items: stretch; }
+.notes-head { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.notes-head h3 { margin-right: auto; }
+.note-view { min-height: 60px; cursor: text; border-radius: 8px; padding: 6px 4px; line-height: 1.7; }
+.note-view:hover { background: var(--surface-2); }
+.note-view .empty-note { color: var(--muted); }
+.note-view p { margin: 0; white-space: pre-wrap; min-height: 1.7em; }
+.note-item { display: flex; gap: 8px; align-items: flex-start; }
+.note-item input { width: 18px; height: 18px; margin: 4px 0 0; flex: none; accent-color: var(--ok); }
+.note-item.checked span { text-decoration: line-through; color: var(--muted); }
+#note-input { line-height: 1.6; }
+.carry {
+  background: var(--surface-2); border-radius: 10px; padding: 10px 12px; font-size: 14px;
+  display: flex; flex-direction: column; gap: 8px;
+}
+.carry ul { margin: 0; padding-left: 20px; color: var(--muted); font-size: 13px; }
+.carry .btn-row { margin: 0; }
+
+/* ノートはタスク・時間割・カレンダーの画面に表示 */
+#view-notes { display: none; }
+body[data-view="tasks"] #view-notes,
+body[data-view="timetable"] #view-notes,
+body[data-view="calendar"] #view-notes { display: flex; }

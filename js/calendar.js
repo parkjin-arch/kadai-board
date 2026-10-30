@@ -27,7 +27,7 @@ export function eventDescription(task, course) {
 }
 
 /** UTC の "20261106T145900Z" 形式（タイムゾーンのずれを避けるため UTC で渡す） */
-function utcStamp(d) {
+export function utcStamp(d) {
   return d.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
 }
 
@@ -48,7 +48,7 @@ export function googleCalendarUrl(task, course) {
 // ---------- .ics（RFC 5545） ----------
 
 /** テキスト値のエスケープ */
-function icsText(s) {
+export function icsText(s) {
   return String(s).replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\r?\n/g, '\\n');
 }
 
@@ -78,8 +78,9 @@ function fold(line) {
  * タスク一覧から .ics 文字列を作る（期限のあるタスクのみ）
  * @param {Array} tasks
  * @param {import('./timetable.js').Timetable} tt
+ * @param {string[]} extraLines バイトのシフトなど、追加する VEVENT の行
  */
-export function buildIcs(tasks, tt) {
+export function buildIcs(tasks, tt, extraLines = []) {
   const now = utcStamp(new Date());
   const lines = [
     'BEGIN:VCALENDAR',
@@ -112,7 +113,7 @@ export function buildIcs(tasks, tt) {
     }
     lines.push('END:VEVENT');
   }
-  lines.push('END:VCALENDAR');
+  lines.push(...extraLines, 'END:VCALENDAR');
   return lines.map(fold).join('\r\n') + '\r\n';
 }
 
