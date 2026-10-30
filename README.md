@@ -148,43 +148,28 @@ Safari で公開 URL を開く → 共有ボタン → 「ホーム画面に追�
 
 ---
 
-## 段階2：Google Calendar API 自動同期
+## Googleカレンダー自動同期
 
-タスクを追加・編集・削除すると、専用カレンダー「課題」のイベントが自動で作成・更新・削除される。完了したタスクは「✓」付きのグレーのイベントになる。実装は `js/gcal-sync.js` にある。
+タスクの期限・バイトのシフト・自分の予定を、専用カレンダー「課題」に自動で書き込む（授業は量が多いので送らない）。実装は `js/gcal-sync.js`。
 
-### Google Cloud Console の設定
+- 毎週のシフトは繰り返しの予定になる。「この日は休み」は繰り返しから外し（EXDATE）、「この日だけ時間変更」は別の予定として作る
+- 完了したタスクは「✓」付きのグレーの予定になる。アプリで削除したものはカレンダーからも消える
+- **送信待ち方式**：変更したデータには `gcalDirty: true` が付き、削除したものは設定の `gcalDeletes` に積まれる。接続中ならすぐ送る
+- ブラウザだけで動くアプリなので、Google の接続は約1時間で切れる。切れたあとに変更すると、画面上部に「📅 同期待ち N件」が出るので、押すと送られる（Firebase を使っていれば、送信待ちは端末をまたいで残る）。アプリを閉じている間に自動で送るにはサーバー（有料の Cloud Functions など）が必要
 
-1. https://console.cloud.google.com/ で新しいプロジェクトを作成（例：`kadai-board`）
+### 設定手順（Firebase と同じ Google Cloud プロジェクトを使う）
+
+1. https://console.cloud.google.com/ で、Firebase のプロジェクトを選ぶ
 2. **API とサービス → ライブラリ** で「Google Calendar API」を検索 → 有効にする
-3. **API とサービス → OAuth 同意画面**（「Google Auth Platform」と表示される場合もある）
-   - User Type：**外部**
-   - アプリ名・サポートメールを入力
-   - スコープ：`https://www.googleapis.com/auth/calendar.app.created` を追加
-     （このアプリが作ったカレンダーだけを操作できる、いちばん権限の狭いスコープ）
-   - **テストユーザー**に自分の Gmail アドレスを追加（公開ステータスが「テスト」のままなら、審査なしで自分だけ使える）
-4. **API とサービス → 認証情報 → 認証情報を作成 → OAuth クライアント ID**
-   - アプリケーションの種類：**ウェブ アプリケーション**
-   - 承認済みの JavaScript 生成元：
-     - `https://<ユーザー名>.github.io`
-     - `http://localhost:8000`（ローカルで試す用）
-   - リダイレクト URI は不要（トークンモデルを使うため）
-5. 発行されたクライアント ID を `js/config.js` に入れる
-   ```js
-   google: {
-     clientId: '1234567890-xxxx.apps.googleusercontent.com',
-     ...
-   }
-   ```
-6. デプロイ → 設定画面の「Googleカレンダーに接続」→ 許可。既存タスクがまとめて同期される
+3. **API とサービス → OAuth 同意画面**（「Google Auth Platform」の場合は「データアクセス」「対象」）
+   - スコープに `https://www.googleapis.com/auth/calendar.app.created` を追加（このアプリが作ったカレンダーだけを操作できる、いちばん狭い権限）
+   - 公開ステータスが「テスト」なら、**テストユーザー**に自分の Gmail アドレスを追加
+4. **API とサービス → 認証情報** の「Web client (auto created by Google Service)」（Firebase が作ったもの）を開く
+   - 承認済みの JavaScript 生成元に `https://parkjin-arch.github.io` と `http://localhost:8000` を追加して保存
+   - **クライアント ID** を `js/config.js` の `google.clientId` に入れる
+5. アプリの設定 →「Googleカレンダーに接続」→ 許可。今あるデータがまとめて送られる
 
-**補足**
-
-- クライアント ID は公開されても問題ない値（生成元を自分のドメインに制限しているため）。クライアント**シークレット**は使わないので、作らなくてよい。
-- 公開ステータスが「テスト」のあいだは、許可が 7 日ごとに失効することがある。そのときは「接続」を押し直す。
-- アクセストークンの有効期限は約1時間。切れたあとに操作すると、自動で再取得を試みる（ポップアップが一瞬表示される）。
-- `calendar.app.created` スコープでは、既存の「課題」カレンダーを名前から探せない場合がある。作成したカレンダーの ID は保存しておき、次回からはその ID を使う。
-
-## 段階2：Firebase（Firestore + Googleログイン）で端末間同期
+## クラウド保存：Firebase（Firestore + Googleログイン）で端末間同期
 
 実装は `js/firebase-store.js` にある。`LocalTaskStore` と同じインターフェースなので、UI 側の変更は不要。
 
@@ -205,12 +190,8 @@ Safari で公開 URL を開く → 共有ボタン → 「ホーム画面に追�
      }
    }
    ```
-6. **プロジェクトの設定 → マイアプリ → ウェブアプリを追加（</>）** → 表示された `firebaseConfig` を `js/config.js` にコピーし、`storage` を `'firebase'` にする
-   ```js
-   storage: 'firebase',
-   firebase: { apiKey: '...', authDomain: 'xxx.firebaseapp.com', projectId: 'xxx', appId: '...' },
-   ```
-7. デプロイ → 設定 → 「Googleでログイン」。初回ログイン時に、この端末の localStorage のタスクをアカウントへ移すか聞かれる
+6. **プロジェクトの設定 → マイアプリ → ウェブアプリを追加（</>）** → 表示された `firebaseConfig` の値を `js/config.js` の `firebase` にコピーする（値が入っていれば自動でクラウド保存になる）
+7. デプロイ → 画面上部の「Googleでログイン」。初回ログイン時に、この端末のデータ（タスク・シフト・ノート・授業・予定・学期の設定）をアカウントへ移すか1回だけ聞かれる
 
 **しくみと注意**
 

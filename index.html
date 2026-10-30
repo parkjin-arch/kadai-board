@@ -24,7 +24,12 @@
   <header class="topbar">
     <h1>課題ボード</h1>
     <span id="today-label" class="muted"></span>
+    <button id="gcal-pending" class="chip sm sync-pill" hidden></button>
   </header>
+  <div id="login-banner" class="login-banner" hidden>
+    <span>ログインすると、スマホとPCで同じデータが使えます</span>
+    <button class="btn primary sm" id="login-banner-btn">Googleでログイン</button>
+  </div>
 
   <main id="main">
     <!-- ===== タスク一覧 ===== -->
@@ -124,7 +129,7 @@
       </div>
 
       <div class="card" id="sync-card" hidden>
-        <h3>同期（段階2）</h3>
+        <h3>同期</h3>
         <div id="sync-firebase" hidden>
           <p class="muted" id="fb-status"></p>
           <button class="btn" id="fb-login">Googleでログイン</button>
@@ -132,8 +137,12 @@
         </div>
         <div id="sync-gcal" hidden>
           <p class="muted" id="gcal-status">Googleカレンダー：未接続</p>
-          <button class="btn" id="gcal-connect">Googleカレンダーに接続</button>
-          <button class="btn" id="gcal-resync" hidden>全タスクを再同期</button>
+          <p class="muted">タスクの期限・バイトのシフト・自分の予定を、Googleカレンダーの「課題」カレンダーに自動で書き込みます。</p>
+          <div class="btn-row">
+            <button class="btn primary" id="gcal-connect">Googleカレンダーに接続</button>
+            <button class="btn" id="gcal-sync-now" hidden>今すぐ同期</button>
+            <button class="btn" id="gcal-resync" hidden>すべて送り直す</button>
+          </div>
         </div>
       </div>
 

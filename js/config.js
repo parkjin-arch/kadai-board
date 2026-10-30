@@ -1,21 +1,23 @@
 // アプリ設定
-// 段階1では何も変更しなくてよい。段階2で値を埋めると同期機能が有効になる（README 参照）。
+// 下の firebase と google.clientId を埋めると、クラウド保存と Googleカレンダー自動同期が有効になる（README 参照）。
+// どちらの値も公開して問題ないもの（アクセスは Firebase のルールと Google の承認済みドメインで守られる）。
+
+// Firebase コンソール > プロジェクトの設定 > マイアプリ の firebaseConfig をそのまま貼る
+const firebase = {
+  apiKey: '',
+  authDomain: '',
+  projectId: '',
+  appId: '',
+};
 
 export const CONFIG = {
-  // 'local' = localStorage（段階1） / 'firebase' = Firestore＋Googleログイン（段階2）
-  storage: 'local',
+  // Firebase の設定があればクラウド（Firestore＋Googleログイン）、なければこの端末の localStorage に保存
+  storage: firebase.apiKey ? 'firebase' : 'local',
+  firebase,
 
-  // 段階2: Firebase コンソール > プロジェクトの設定 > マイアプリ の firebaseConfig をそのまま貼る
-  firebase: {
-    apiKey: '',
-    authDomain: '',
-    projectId: '',
-    appId: '',
-  },
-
-  // 段階2: Google Calendar API 自動同期
+  // Google Calendar API 自動同期
   google: {
-    // Google Cloud Console で作った「ウェブアプリケーション」の OAuth クライアントID。空なら無効
+    // Google Cloud Console の「ウェブアプリケーション」の OAuth クライアントID。空なら無効
     clientId: '',
     // 書き込み先の専用カレンダー名
     calendarName: '課題',

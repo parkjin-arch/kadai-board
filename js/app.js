@@ -47,6 +47,9 @@ let eventStore; // 自分で追加した予定
 let authState = null; // 段階2: Firebase のログイン状態（有効時のみ）
 let gcal = null; // 段階2: Googleカレンダー同期（有効時のみ）
 
+/** 保存するデータに付ける「Googleカレンダーへの送信待ち」の印（同期が有効なときだけ） */
+const gcalMark = () => (gcal ? { gcalDirty: true } : {});
+
 const loadJson = (key, fallback) => {
   try {
     return JSON.parse(localStorage.getItem(key)) ?? fallback;
@@ -111,11 +114,19 @@ async function main() {
 
   if (CONFIG.google.clientId) {
     const { GcalSync } = await import('./gcal-sync.js');
-    gcal = new GcalSync(store, tt, CONFIG.google);
+    gcal = new GcalSync({ task: store, shift: shiftStore, event: eventStore }, tt, CONFIG.google);
   }
 
   bindEvents();
   setupSyncUi();
+  if (authState) {
+    authState.onAuthChange(async () => {
+      await seedCourses();
+      syncTimetable();
+      renderAll();
+    });
+  }
+  gcal?.flush();
   setView(ui.view);
   renderAll();
 
@@ -149,8 +160,9 @@ function syncTimetable() {
 // ====================================================================
 async function saveTask(task, isNew) {
   try {
-    const saved = isNew ? await store.add(task) : await store.update(task.id, task);
-    gcal?.onSaved(saved);
+    const doc = { ...task, ...gcalMark() };
+    const saved = isNew ? await store.add(doc) : await store.update(task.id, doc);
+    gcal?.flush();
     return saved;
   } catch (e) {
     toast(e.message);
@@ -162,7 +174,7 @@ async function deleteTask(id) {
   const task = store.all().find((t) => t.id === id);
   if (!task) return;
   await store.remove(id);
-  gcal?.onRemoved(task);
+  gcal?.queueDelete('task', task);
   toast('削除しました', '元に戻す', async () => {
     await saveTask({ ...task, gcalEventId: null }, true);
   });
@@ -187,6 +199,7 @@ function renderAll() {
   renderCalendar(now);
   renderNotes(now);
   renderTermInfo();
+  renderSyncStatus();
   if ($('#course-dialog').open) renderCourseDialog();
   if ($('#occ-dialog').open) renderOccDialog();
   if ($('#day-dialog').open) renderDayDialog();
@@ -657,7 +670,11 @@ async function deleteEvent(id) {
   const ev = eventStore.get(id);
   if (!ev) return;
   await eventStore.remove(id);
-  toast('予定を削除しました', '元に戻す', () => eventStore.add(ev));
+  gcal?.queueDelete('event', ev);
+  toast('予定を削除しました', '元に戻す', async () => {
+    await eventStore.add({ ...ev, gcalEventId: null, ...gcalMark() });
+    gcal?.flush();
+  });
 }
 
 // ---------- 授業：タップしたときの操作（タスク一覧・編集・休講など・削除） ----------
@@ -812,7 +829,7 @@ async function deleteCourse(withTasks) {
   for (const t of linked) {
     if (withTasks) {
       await store.remove(t.id);
-      gcal?.onRemoved(t);
+      gcal?.queueDelete('task', t);
     } else {
       await saveTask({ ...t, courseId: null }, false);
     }
@@ -946,8 +963,9 @@ function upcomingShiftConflicts(shiftId) {
 
 async function saveShift(fields) {
   const saved = ui.shiftEditingId
-    ? await shiftStore.update(ui.shiftEditingId, fields)
-    : await shiftStore.add(makeShift(fields));
+    ? await shiftStore.update(ui.shiftEditingId, { ...fields, ...gcalMark() })
+    : await shiftStore.add(makeShift({ ...fields, ...gcalMark() }));
+  gcal?.flush();
   const conflicts = upcomingShiftConflicts(saved.id);
   if (conflicts.length) {
     toast(`保存しました。⚠ ${conflicts.length}件の重なりがあります`, '確認', () => setCalMode('week', conflicts[0].at));
@@ -961,7 +979,11 @@ async function deleteShift(id) {
   const shift = shiftStore.get(id);
   if (!shift) return;
   await shiftStore.remove(id);
-  toast('シフトを削除しました', '元に戻す', () => shiftStore.add(shift));
+  gcal?.queueDelete('shift', shift);
+  toast('シフトを削除しました', '元に戻す', async () => {
+    await shiftStore.add({ ...shift, gcal: null, ...gcalMark() });
+    gcal?.flush();
+  });
 }
 
 // ---------- シフト1回分の操作 ----------
@@ -1018,7 +1040,8 @@ async function setException(exception) {
   const before = exceptions[o.key] || null;
   if (exception) exceptions[o.key] = exception;
   else delete exceptions[o.key];
-  await shiftStore.update(o.shift.id, { exceptions });
+  await shiftStore.update(o.shift.id, { exceptions, ...gcalMark() });
+  gcal?.flush();
   return before;
 }
 
@@ -1433,8 +1456,9 @@ function bindEvents() {
     const fields = readEventForm();
     if (fields.error) return toast(fields.error);
     if (!fields.title) return toast('タイトルを入れてください');
-    if (ui.eventEditingId) await eventStore.update(ui.eventEditingId, fields);
-    else await eventStore.add(makeEvent(fields));
+    if (ui.eventEditingId) await eventStore.update(ui.eventEditingId, { ...fields, ...gcalMark() });
+    else await eventStore.add(makeEvent({ ...fields, ...gcalMark() }));
+    gcal?.flush();
     $('#event-dialog').close();
     toast('予定を保存しました');
   });
@@ -1663,7 +1687,7 @@ function bindEvents() {
     if (!confirm(`完了済みの ${done.length} 件を削除します。よろしいですか？`)) return;
     for (const t of done) {
       await store.remove(t.id);
-      gcal?.onRemoved(t);
+      gcal?.queueDelete('task', t);
     }
     toast('削除しました');
   });
@@ -1735,32 +1759,54 @@ function setupSyncUi() {
 
   if (fb) {
     $('#sync-firebase').hidden = false;
-    const refresh = () => {
-      const u = authState.user;
-      $('#fb-status').textContent = u ? `ログイン中: ${u.email}（スマホとPCで同期されます）` : '未ログイン：ログインするとタスクが同期されます';
-      $('#fb-login').hidden = !!u;
-      $('#fb-logout').hidden = !u;
-    };
-    authState.onAuthChange(refresh);
-    $('#fb-login').addEventListener('click', () => authState.signIn().catch((e) => alert(e.message)));
+    const login = () => authState.signIn().catch((e) => alert(`ログインできませんでした: ${e.message}`));
+    $('#fb-login').addEventListener('click', login);
+    $('#login-banner-btn').addEventListener('click', login);
     $('#fb-logout').addEventListener('click', () => authState.signOut());
-    refresh();
+    authState.onAuthChange(renderSyncStatus);
   }
 
   if (gcal) {
     $('#sync-gcal').hidden = false;
-    const refresh = () => {
-      $('#gcal-status').textContent = gcal.connected ? `Googleカレンダー：接続済み（「${CONFIG.google.calendarName}」に自動で書き込みます）` : 'Googleカレンダー：未接続';
-      $('#gcal-connect').hidden = gcal.connected;
-      $('#gcal-resync').hidden = !gcal.connected;
-    };
-    gcal.onStatusChange = refresh;
-    $('#gcal-connect').addEventListener('click', () => gcal.connect().catch((e) => alert(e.message)));
-    $('#gcal-resync').addEventListener('click', async () => {
-      const n = await gcal.syncAll();
-      toast(`${n}件を同期しました`);
+    gcal.onStatusChange = renderSyncStatus;
+    const run = (fn) => fn().catch((e) => alert(`Googleカレンダー：${e.message}`));
+    $('#gcal-connect').addEventListener('click', () => run(() => gcal.connect()));
+    $('#gcal-sync-now').addEventListener('click', () => run(() => gcal.syncNow()));
+    $('#gcal-pending').addEventListener('click', () => run(() => gcal.syncNow()));
+    $('#gcal-resync').addEventListener('click', () => {
+      if (confirm('すべてのタスク・シフト・予定を Googleカレンダーに送り直します。よろしいですか？')) run(() => gcal.resyncAll());
     });
-    refresh();
+  }
+  renderSyncStatus();
+}
+
+/** ログイン状態・Googleカレンダーの送信待ちを表示 */
+function renderSyncStatus() {
+  if (authState) {
+    const u = authState.user;
+    $('#fb-status').textContent = u
+      ? `ログイン中: ${u.email}（スマホとPCで同じデータが使えます）`
+      : '未ログイン：ログインすると、スマホとPCでデータが同期されます';
+    $('#fb-login').hidden = !!u;
+    $('#fb-logout').hidden = !u;
+    $('#login-banner').hidden = !!u;
+  }
+  if (gcal) {
+    const n = gcal.pendingCount;
+    const name = CONFIG.google.calendarName;
+    $('#gcal-status').textContent = !gcal.wasConnected
+      ? 'Googleカレンダー：未接続'
+      : gcal.connected
+        ? `接続中：変更はすぐ「${name}」カレンダーに送られます${n ? `（送信中 ${n} 件）` : ''}`
+        : `接続の有効期限が切れています${n ? `（同期待ち ${n} 件）` : ''}。「今すぐ同期」で送ります`;
+    if (gcal.lastError) $('#gcal-status').textContent += ` ／ エラー: ${gcal.lastError}`;
+    $('#gcal-connect').hidden = gcal.wasConnected;
+    $('#gcal-sync-now').hidden = !gcal.wasConnected;
+    $('#gcal-resync').hidden = !gcal.wasConnected;
+    // 画面上部の「同期待ち」ボタン（接続が切れていて、送るものがあるとき）
+    const pill = $('#gcal-pending');
+    pill.hidden = !(gcal.wasConnected && n && (!gcal.connected || gcal.lastError));
+    pill.textContent = `📅 同期待ち ${n}件`;
   }
 }
 

@@ -153,6 +153,14 @@ textarea { resize: vertical; }
   padding: 12px 16px 4px;
 }
 .topbar h1 { font-size: 20px; }
+.sync-pill { margin-left: auto; align-self: center; color: var(--warn); border-color: var(--warn); font-weight: 700; }
+.login-banner {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  margin: 6px 16px 0; padding: 10px 12px; border-radius: 12px;
+  background: var(--surface); box-shadow: var(--shadow); font-size: 14px;
+}
+.login-banner span { flex: 1; min-width: 180px; }
+@media (min-width: 960px) { .login-banner { max-width: 1168px; margin: 6px auto 0; width: calc(100% - 32px); order: 1; } }
 
 main { padding: 8px 16px 24px; max-width: 1200px; margin: 0 auto; }
 .view { display: none; }
@@ -410,7 +418,8 @@ dialog.sheet::backdrop { background: rgb(0 0 0 / .4); }
 .cal-month {
   position: relative; overflow-y: auto; overscroll-behavior: contain;
   overflow-anchor: none; /* 前の月を足したときの位置合わせは JS で行う（ブラウザの自動補正と二重にならないように） */
-  height: calc(100dvh - 300px); min-height: 380px;
+  /* 画面の下（タブバーの上）まで使う */
+  height: calc(100dvh - 250px - env(safe-area-inset-bottom)); min-height: 520px;
   -webkit-overflow-scrolling: touch;
 }
 .mh { display: grid; grid-template-columns: repeat(7, 1fr); padding: 14px 0 4px; }
@@ -418,7 +427,7 @@ dialog.sheet::backdrop { background: rgb(0 0 0 / .4); }
 .mh span.cur { color: var(--today); }
 .mw {
   display: grid; grid-template-columns: repeat(7, minmax(0, 1fr));
-  grid-template-rows: 24px repeat(3, 17px) 14px;
+  grid-template-rows: 26px repeat(5, 19px) 14px; /* 日付 + 5段 + 「+n」 */
   row-gap: 1px;
   border-top: 1px solid var(--line);
   padding-bottom: 3px;
@@ -440,7 +449,7 @@ dialog.sheet::backdrop { background: rgb(0 0 0 / .4); }
 .bar {
   position: relative; z-index: 1; pointer-events: none;
   min-width: 0; margin: 0 2px; padding: 0 3px; border-radius: 4px;
-  font-size: 10.5px; line-height: 16px; height: 16px;
+  font-size: 11px; line-height: 18px; height: 18px;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   background: color-mix(in srgb, var(--c) 22%, transparent);
   color: color-mix(in srgb, var(--c) 70%, var(--text));

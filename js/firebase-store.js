@@ -16,8 +16,24 @@ import {
 } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js';
 import {
   initializeFirestore, persistentLocalCache, persistentMultipleTabManager,
-  collection, doc, onSnapshot, setDoc, updateDoc, deleteDoc, getDocs, writeBatch,
+  collection, doc, onSnapshot, setDoc, updateDoc, deleteDoc, getDoc, getDocs, writeBatch,
 } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
+
+const LABEL = { tasks: 'タスク', shifts: 'シフト', notes: 'ノート', courses: '授業', events: '予定' };
+
+/** 最初のスナップショットが届くまで待つ onSnapshot（届く前に空の状態で描くと、初期データを二重に作ってしまうため） */
+function listen(ref, onData) {
+  return new Promise((resolve) => {
+    let first = true;
+    const unsub = onSnapshot(ref, (snap) => {
+      onData(snap);
+      if (first) { first = false; resolve(unsub); }
+    }, (err) => {
+      console.error('Firestore 読み込み失敗', err);
+      if (first) { first = false; resolve(unsub); }
+    });
+  });
+}
 
 /**
  * ログインと Firestore 接続を1つにまとめたもの
@@ -59,9 +75,9 @@ class FirebaseAuthState {
         this.user = user;
         this.meta = {};
         this._unsubMeta?.();
-        if (user) {
-          this._unsubMeta = onSnapshot(this.metaDoc(), (snap) => (this.meta = snap.data() || {}));
-        }
+        this._unsubMeta = null;
+        if (user) await this._migrateFromLocal();
+        if (user) this._unsubMeta = await listen(this.metaDoc(), (snap) => (this.meta = snap.data() || {}));
         for (const c of this.collections) await c._attach(user);
         this.listeners.forEach((fn) => fn(user));
         if (first) { first = false; resolve(); }
@@ -72,6 +88,40 @@ class FirebaseAuthState {
 
   metaDoc() {
     return doc(this.db, 'users', this.user.uid, 'meta', 'settings');
+  }
+
+  /**
+   * はじめてログインしたとき：この端末（localStorage）のデータをアカウントに移すか、まとめて1回だけ聞く
+   * アカウント側にすでにデータがある種類は上書きしない
+   */
+  async _migrateFromLocal() {
+    const flag = 'kadai-board.migrated';
+    if (localStorage.getItem(flag) === this.user.uid) return false;
+    const local = this.collections
+      .map((c) => ({ c, docs: JSON.parse(localStorage.getItem(c.localKey) || '[]') }))
+      .filter((x) => x.docs.length);
+    localStorage.setItem(flag, this.user.uid);
+    if (!local.length) return false;
+    const summary = local.map((x) => `${LABEL[x.c.name] || x.c.name}${x.docs.length}件`).join('・');
+    if (!confirm(`この端末のデータ（${summary}）をアカウントに移しますか？
+スマホとPCで同じデータが使えるようになります。`)) return false;
+
+    for (const { c, docs } of local) {
+      const existing = await getDocs(c._col());
+      if (!existing.empty) continue;
+      for (let i = 0; i < docs.length; i += 450) {
+        const batch = writeBatch(this.db);
+        for (const d of docs.slice(i, i + 450)) batch.set(doc(c._col(), d.id), d);
+        await batch.commit();
+      }
+    }
+    // 学期名・アーカイブ・カレンダーIDなどの設定も移す（アカウント側にないものだけ）
+    const remote = (await getDoc(this.metaDoc())).data() || {};
+    const localMeta = {};
+    for (const c of this.collections) Object.assign(localMeta, JSON.parse(localStorage.getItem(c.localKey + '.meta') || '{}'));
+    const add = Object.fromEntries(Object.entries(localMeta).filter(([k]) => !(k in remote)));
+    if (Object.keys(add).length) await setDoc(this.metaDoc(), add, { merge: true });
+    return true;
   }
 
   async signIn() {
@@ -113,34 +163,19 @@ export class FirestoreCollection {
     return collection(this.a.db, 'users', this.a.user.uid, this.name);
   }
 
-  /** ログイン・ログアウトのたびに購読し直す */
+  /** ログイン・ログアウトのたびに購読し直す（最初のデータが届くまで待つ） */
   async _attach(user) {
     this._unsub?.();
     this._unsub = null;
     this.docs = [];
     if (user) {
-      await this._migrateFromLocal();
       // 他の端末での変更をリアルタイムに受け取る
-      this._unsub = onSnapshot(this._col(), (snap) => {
+      this._unsub = await listen(this._col(), (snap) => {
         this.docs = snap.docs.map((d) => d.data());
         this._emit();
       });
     }
     this._emit();
-  }
-
-  /** 初回ログイン時、Firestore が空なら localStorage のデータをアップロード */
-  async _migrateFromLocal() {
-    const flag = `kadai-board.migrated.${this.name}`;
-    const local = JSON.parse(localStorage.getItem(this.localKey) || '[]');
-    if (!local.length || localStorage.getItem(flag) === this.a.user.uid) return;
-    const existing = await getDocs(this._col());
-    if (existing.empty && confirm(`この端末の${{ tasks: 'タスク', shifts: 'シフト', notes: 'ノート', courses: '授業', events: '予定' }[this.name] || 'データ'} ${local.length} 件をアカウントに移しますか？`)) {
-      const batch = writeBatch(this.a.db);
-      for (const d of local) batch.set(doc(this._col(), d.id), d);
-      await batch.commit();
-    }
-    localStorage.setItem(flag, this.a.user.uid);
   }
 
   _requireUser() {

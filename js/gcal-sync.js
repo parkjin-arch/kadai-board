@@ -3,18 +3,23 @@
 //
 // しくみ
 //   - Google Identity Services（GIS）の「トークンモデル」でアクセストークンを取得（サーバー不要）
-//   - 専用カレンダー「課題」を作成し、その ID を store の meta に保存（Firebase 利用時は端末間で共有される）
-//   - タスク保存時：期限あり → イベント作成/更新、期限なし → イベント削除
-//   - タスク削除時：イベント削除
-//   - イベントIDはタスクの gcalEventId に保存
+//   - 専用カレンダー「課題」を作り、その ID を設定（meta）に保存（Firebase 利用時は端末間で共有される）
+//   - 同期するもの：タスクの期限 / バイトのシフト（毎週は繰り返しの予定）/ 自分の予定
+//   - 「送信待ち」方式：変更されたデータには gcalDirty: true が付き、削除したものは meta の gcalDeletes に積まれる。
+//     接続中ならすぐ送り、トークンが切れていれば「同期待ち N件」として残す（Firebase なら別の端末からでも送れる）
 //
-// 注意：アクセストークンは約1時間で切れる。切れたら次の操作時に自動で再取得を試みる
-//       （一度許可していれば通常はポップアップが一瞬出るだけ）。
+// 注意：ブラウザだけで動くアプリなので、アクセストークンは約1時間で切れる。
+//       切れたあとは、画面上の「📅 同期待ち」を押すと（ユーザー操作なのでポップアップが開ける）再取得して送る。
 
 import { eventTitle, eventRange, eventDescription } from './calendar.js';
+import { eventSpan } from './events.js';
+import { fromKey } from './shifts.js';
+import { addDays, toDateInput } from './dateutil.js';
 
 const API = 'https://www.googleapis.com/calendar/v3';
 const GIS_SRC = 'https://accounts.google.com/gsi/client';
+const TOKEN_KEY = 'kadai-board.gcal.token';
+const TZ = 'Asia/Tokyo';
 
 function loadScript(src) {
   return new Promise((resolve, reject) => {
@@ -28,29 +33,51 @@ function loadScript(src) {
   });
 }
 
+/** "2026-11-02" と "18:00" → "2026-11-02T18:00:00"（タイムゾーンは別に TZ で渡す） */
+const localDT = (key, hhmm) => `${key}T${hhmm}:00`;
+/** 日またぎ（終了 <= 開始）なら翌日の日付 */
+const endKey = (key, start, end) => (end <= start ? toDateInput(addDays(fromKey(key), 1)) : key);
+
 export class GcalSync {
   /**
-   * @param {import('./store.js').LocalCollection} store タスクのコレクション
+   * @param {{ task, shift, event }} stores 同期するコレクション（task の meta に設定を保存）
    * @param {import('./timetable.js').Timetable} tt
    * @param {{ clientId: string, calendarName: string, scope: string }} opts
    */
-  constructor(store, tt, opts) {
-    this.store = store;
+  constructor(stores, tt, opts) {
+    this.stores = stores;
+    this.meta = stores.task; // getMeta / setMeta 用
     this.tt = tt;
     this.opts = opts;
-    this.token = null;
-    this.tokenExpires = 0;
     this.calendarId = null;
+    this.flushing = false;
+    this.again = false;
+    this.lastError = null;
     this.onStatusChange = () => {};
-    // 以前接続したことがあれば、操作時に自動でトークンを取りに行く
+    // 一度接続したことがあるか（再取得のときに同意画面を省ける）
     this.wasConnected = localStorage.getItem('kadai-board.gcal.connected') === '1';
+    // アクセストークンは1時間だけ有効。ページを開き直しても使えるよう、期限つきで覚えておく
+    try {
+      const t = JSON.parse(localStorage.getItem(TOKEN_KEY) || 'null');
+      if (t && t.exp > Date.now()) Object.assign(this, { token: t.token, tokenExpires: t.exp });
+    } catch { /* 壊れていたら無視 */ }
   }
 
   get connected() {
     return !!this.token && Date.now() < this.tokenExpires;
   }
 
-  /** トークンを取得（prompt: 'consent' は初回、'' は再取得） */
+  /** 送信待ちの件数 */
+  get pendingCount() {
+    const dirty = Object.values(this.stores).reduce((n, s) => n + s.all().filter((d) => d.gcalDirty).length, 0);
+    return dirty + (this.meta.getMeta('gcalDeletes') || []).length;
+  }
+
+  // ------------------------------------------------------------------
+  // トークン
+  // ------------------------------------------------------------------
+
+  /** トークンを取得（prompt: 'consent' は初回、'' は再取得）。ボタンを押したときなどユーザー操作の中で呼ぶ */
   async _requestToken(prompt) {
     await loadScript(GIS_SRC);
     return new Promise((resolve, reject) => {
@@ -61,32 +88,103 @@ export class GcalSync {
           if (res.error) return reject(new Error(res.error_description || res.error));
           this.token = res.access_token;
           this.tokenExpires = Date.now() + (res.expires_in - 60) * 1000;
+          localStorage.setItem(TOKEN_KEY, JSON.stringify({ token: this.token, exp: this.tokenExpires }));
           localStorage.setItem('kadai-board.gcal.connected', '1');
           this.wasConnected = true;
           this.onStatusChange();
           resolve();
         },
-        error_callback: (err) => reject(new Error(err.message || 'ログインがキャンセルされました')),
+        error_callback: (err) => reject(new Error(err.message || 'Google へのログインがキャンセルされました')),
       });
       client.requestAccessToken({ prompt });
     });
   }
 
-  /** 設定画面の「接続」ボタンから呼ぶ */
+  _dropToken() {
+    this.token = null;
+    this.tokenExpires = 0;
+    localStorage.removeItem(TOKEN_KEY);
+  }
+
+  /** 設定画面の「接続」：同意 → 全部を送信待ちにして送る */
   async connect() {
     await this._requestToken('consent');
-    await this._ensureCalendar();
-    await this.syncAll();
+    await this.resyncAll();
   }
 
-  async _ensureToken() {
-    if (this.connected) return true;
-    if (!this.wasConnected) return false; // 一度も接続していなければ何もしない
-    await this._requestToken('');
-    return true;
+  /** 「同期待ち」ボタン：必要ならトークンを取り直してから送る */
+  async syncNow() {
+    if (!this.connected) await this._requestToken(this.wasConnected ? '' : 'consent');
+    await this.flush();
   }
 
-  /** API 呼び出し（JSON） */
+  /** すべてのデータを送信待ちにして送る（カレンダー側を作り直したいときなど） */
+  async resyncAll() {
+    for (const s of Object.values(this.stores)) {
+      for (const d of s.all()) if (!d.gcalDirty) await s.update(d.id, { gcalDirty: true });
+    }
+    await this.flush();
+  }
+
+  // ------------------------------------------------------------------
+  // app.js から呼ぶ
+  // ------------------------------------------------------------------
+
+  /** 削除したデータのカレンダー側の予定を、削除待ちに積む */
+  async queueDelete(kind, doc) {
+    const ids = idsOf(kind, doc);
+    if (!ids.length) return;
+    const list = [...(this.meta.getMeta('gcalDeletes') || []), ...ids];
+    await this.meta.setMeta('gcalDeletes', list);
+    this.flush();
+  }
+
+  /** 送信待ちをまとめて送る（接続していなければ件数を知らせるだけ） */
+  async flush() {
+    if (this.flushing) {
+      this.again = true;
+      return;
+    }
+    if (!this.connected) return this.onStatusChange();
+    this.flushing = true;
+    this.lastError = null;
+    try {
+      await this._ensureCalendar();
+      // 削除待ち
+      const deletes = this.meta.getMeta('gcalDeletes') || [];
+      for (const id of deletes) await this._delete(id);
+      if (deletes.length) {
+        const rest = (this.meta.getMeta('gcalDeletes') || []).filter((id) => !deletes.includes(id));
+        await this.meta.setMeta('gcalDeletes', rest);
+      }
+      // 変更されたデータ
+      for (const [kind, store] of Object.entries(this.stores)) {
+        for (const d of store.all().filter((x) => x.gcalDirty)) {
+          const patch = await this._push(kind, d);
+          // 送っている間にまた編集されていたら、送信待ちのまま残す
+          const still = store.get(d.id);
+          if (!still) continue;
+          await store.update(d.id, { ...patch, gcalDirty: still.updatedAt !== d.updatedAt });
+        }
+      }
+    } catch (e) {
+      if (e.status === 401) this._dropToken(); // トークン切れ・取り消し
+      this.lastError = e.message;
+      console.warn('Googleカレンダー同期に失敗', e);
+    } finally {
+      this.flushing = false;
+      this.onStatusChange();
+      if (this.again) {
+        this.again = false;
+        this.flush();
+      }
+    }
+  }
+
+  // ------------------------------------------------------------------
+  // Calendar API
+  // ------------------------------------------------------------------
+
   async _api(method, path, body) {
     const res = await fetch(API + path, {
       method,
@@ -106,7 +204,7 @@ export class GcalSync {
   /** 専用カレンダー「課題」を用意する（保存済み ID → 名前で検索 → 新規作成 の順） */
   async _ensureCalendar() {
     if (this.calendarId) return this.calendarId;
-    const saved = this.store.getMeta('gcalCalendarId');
+    const saved = this.meta.getMeta('gcalCalendarId');
     if (saved) {
       try {
         await this._api('GET', `/calendars/${encodeURIComponent(saved)}`);
@@ -120,93 +218,139 @@ export class GcalSync {
       const list = await this._api('GET', '/users/me/calendarList?minAccessRole=owner');
       const found = list.items.find((c) => c.summary === this.opts.calendarName);
       if (found) {
-        await this.store.setMeta('gcalCalendarId', found.id);
+        await this.meta.setMeta('gcalCalendarId', found.id);
         return (this.calendarId = found.id);
       }
     } catch { /* 権限不足は無視 */ }
 
-    const cal = await this._api('POST', '/calendars', { summary: this.opts.calendarName, timeZone: 'Asia/Tokyo' });
-    await this.store.setMeta('gcalCalendarId', cal.id);
+    const cal = await this._api('POST', '/calendars', { summary: this.opts.calendarName, timeZone: TZ });
+    await this.meta.setMeta('gcalCalendarId', cal.id);
     return (this.calendarId = cal.id);
   }
 
-  /** タスク → イベント本体 */
-  _toEvent(task) {
-    const course = this.tt.get(task.courseId);
-    const { start, end } = eventRange(task);
-    return {
-      summary: (task.done ? '✓ ' : '') + eventTitle(task, course),
-      description: eventDescription(task, course),
-      location: course && course.slots.length ? course.room : undefined,
-      start: { dateTime: start.toISOString(), timeZone: 'Asia/Tokyo' },
-      end: { dateTime: end.toISOString(), timeZone: 'Asia/Tokyo' },
-      colorId: task.done ? '8' : undefined, // 完了したらグレー
-      reminders: task.done ? { useDefault: false, overrides: [] } : { useDefault: false, overrides: [{ method: 'popup', minutes: 24 * 60 }] },
-      // あとでタスクと突き合わせられるように ID を埋め込んでおく
-      extendedProperties: { private: { kadaiTaskId: task.id } },
-    };
+  _path(eventId = '') {
+    return `/calendars/${encodeURIComponent(this.calendarId)}/events${eventId ? `/${encodeURIComponent(eventId)}` : ''}`;
   }
 
-  /** 1件を同期。戻り値は最新の eventId（なければ null） */
-  async _push(task) {
-    const cal = encodeURIComponent(await this._ensureCalendar());
-    if (!task.due) {
-      if (task.gcalEventId) await this._delete(task.gcalEventId);
-      return null;
-    }
-    const body = this._toEvent(task);
-    if (task.gcalEventId) {
+  /** あれば更新・なければ作成（カレンダー側で消されていたら作り直す）。予定のIDを返す */
+  async _upsert(eventId, body) {
+    if (eventId) {
       try {
-        await this._api('PATCH', `/calendars/${cal}/events/${task.gcalEventId}`, body);
-        return task.gcalEventId;
+        await this._api('PATCH', this._path(eventId), body);
+        return eventId;
       } catch (e) {
-        if (e.status !== 404 && e.status !== 410) throw e; // カレンダー側で消されていたら作り直す
+        if (e.status !== 404 && e.status !== 410) throw e;
       }
     }
-    const ev = await this._api('POST', `/calendars/${cal}/events`, body);
-    return ev.id;
+    return (await this._api('POST', this._path(), body)).id;
   }
 
   async _delete(eventId) {
-    const cal = encodeURIComponent(await this._ensureCalendar());
     try {
-      await this._api('DELETE', `/calendars/${cal}/events/${eventId}`);
+      await this._api('DELETE', this._path(eventId));
     } catch (e) {
       if (e.status !== 404 && e.status !== 410) throw e;
     }
   }
 
-  /** app.js から：タスクが保存された */
-  async onSaved(task) {
-    try {
-      if (!(await this._ensureToken())) return;
-      const eventId = await this._push(task);
-      if (eventId !== task.gcalEventId) await this.store.update(task.id, { gcalEventId: eventId });
-    } catch (e) {
-      console.warn('カレンダー同期に失敗', e);
+  /** 1件を送る。データに書き戻す項目（予定のID）を返す */
+  async _push(kind, d) {
+    if (kind === 'task') {
+      if (!d.due) {
+        if (d.gcalEventId) await this._delete(d.gcalEventId);
+        return { gcalEventId: null };
+      }
+      return { gcalEventId: await this._upsert(d.gcalEventId, this._taskBody(d)) };
     }
+    if (kind === 'event') {
+      return { gcalEventId: await this._upsert(d.gcalEventId, eventBody(d)) };
+    }
+    return { gcal: await this._pushShift(d) };
   }
 
-  /** app.js から：タスクが削除された */
-  async onRemoved(task) {
-    if (!task.gcalEventId) return;
-    try {
-      if (!(await this._ensureToken())) return;
-      await this._delete(task.gcalEventId);
-    } catch (e) {
-      console.warn('カレンダーからの削除に失敗', e);
-    }
+  _taskBody(task) {
+    const course = this.tt.get(task.courseId);
+    const { start, end } = eventRange(task);
+    return {
+      summary: (task.done ? '✓ ' : '') + eventTitle(task, course),
+      description: eventDescription(task, course),
+      location: course && course.slots.length ? course.room : null,
+      start: { dateTime: start.toISOString(), timeZone: TZ },
+      end: { dateTime: end.toISOString(), timeZone: TZ },
+      colorId: task.done ? '8' : null, // 完了したらグレー
+      reminders: task.done ? { useDefault: false, overrides: [] } : { useDefault: false, overrides: [{ method: 'popup', minutes: 24 * 60 }] },
+      extendedProperties: { private: { kadaiKind: 'task', kadaiId: task.id } },
+    };
   }
 
-  /** 全タスクを同期（初回接続時・「再同期」ボタン） */
-  async syncAll() {
-    if (!(await this._ensureToken())) return 0;
-    let n = 0;
-    for (const t of [...this.store.all()]) {
-      const eventId = await this._push(t);
-      if (eventId !== t.gcalEventId) await this.store.update(t.id, { gcalEventId: eventId });
-      if (eventId) n++;
+  /**
+   * シフト
+   *   単発 → 予定1つ
+   *   毎週 → 繰り返しの予定（休み・時間変更の日は EXDATE で外す）＋ 時間変更の日だけ別の予定
+   * @returns {{ id, singles: { 'YYYY-MM-DD': eventId } }}
+   */
+  async _pushShift(shift) {
+    const prev = shift.gcal || {};
+    const base = {
+      summary: `💼 ${shift.place || 'バイト'}`,
+      colorId: '10', // 緑
+      extendedProperties: { private: { kadaiKind: 'shift', kadaiId: shift.id } },
+    };
+    const desc = (memo) => [shift.wage ? `時給: ${shift.wage}円` : '', memo || ''].filter(Boolean).join('\n');
+    const timed = (key, start, end) => ({
+      start: { dateTime: localDT(key, start), timeZone: TZ },
+      end: { dateTime: localDT(endKey(key, start, end), end), timeZone: TZ },
+    });
+
+    if (shift.kind === 'once') {
+      for (const id of Object.values(prev.singles || {})) await this._delete(id);
+      const id = await this._upsert(prev.id, { ...base, description: desc(shift.memo), ...timed(shift.date, shift.start, shift.end), recurrence: null });
+      return { id, singles: {} };
     }
-    return n;
+
+    // 毎週：開始日以降で最初のその曜日から
+    const from = fromKey(shift.from);
+    const firstKey = toDateInput(addDays(from, (shift.weekday - from.getDay() + 7) % 7));
+    let rule = 'RRULE:FREQ=WEEKLY';
+    if (shift.until) rule += `;UNTIL=${shift.until.replace(/-/g, '')}T145959Z`; // 終了日の 23:59:59（日本時間）
+    const recurrence = [rule];
+    const exKeys = Object.keys(shift.exceptions || {}).sort();
+    if (exKeys.length) {
+      // 外す日は「本来の開始時刻」で指定する
+      recurrence.push(`EXDATE;TZID=${TZ}:${exKeys.map((k) => `${k.replace(/-/g, '')}T${shift.start.replace(':', '')}00`).join(',')}`);
+    }
+    const id = await this._upsert(prev.id, { ...base, description: desc(shift.memo), ...timed(firstKey, shift.start, shift.end), recurrence });
+
+    // 時間変更の日：別の予定として作る（なくなった分は消す）
+    const singles = {};
+    for (const [key, ex] of Object.entries(shift.exceptions || {})) {
+      if (ex.cancel) continue;
+      const s = ex.start || shift.start, e = ex.end || shift.end;
+      singles[key] = await this._upsert(prev.singles?.[key], { ...base, description: desc(ex.memo || shift.memo), ...timed(key, s, e), recurrence: null });
+    }
+    for (const [key, eid] of Object.entries(prev.singles || {})) {
+      if (!singles[key]) await this._delete(eid);
+    }
+    return { id, singles };
   }
+}
+
+/** 自分の予定 → Calendar API の予定 */
+function eventBody(ev) {
+  const { start, end } = eventSpan(ev);
+  const when = ev.allDay
+    ? { start: { date: toDateInput(start) }, end: { date: toDateInput(end) } } // 終日は終了日を含まない
+    : { start: { dateTime: start.toISOString(), timeZone: TZ }, end: { dateTime: end.toISOString(), timeZone: TZ } };
+  return {
+    summary: ev.title || '予定',
+    description: ev.memo || '',
+    ...when,
+    extendedProperties: { private: { kadaiKind: 'event', kadaiId: ev.id } },
+  };
+}
+
+/** そのデータに対応するカレンダー側の予定ID（削除用） */
+function idsOf(kind, d) {
+  if (kind === 'shift') return [d.gcal?.id, ...Object.values(d.gcal?.singles || {})].filter(Boolean);
+  return d.gcalEventId ? [d.gcalEventId] : [];
 }
